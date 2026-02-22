@@ -184,7 +184,7 @@ Each integration has a **real API adapter** with OAuth/token support — not moc
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/tracelayer.git
+git clone https://github.com/Kshitijpalsinghtomar/TraceLayer.git
 cd tracelayer/BRD
 
 # Install dependencies
