@@ -701,39 +701,6 @@ export function DashboardLive() {
               ))}
             </div>
           </motion.div>
-
-          {/* Per-Project Control Center Links */}
-          {projects && projects.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.35 }}
-              className="bg-card backdrop-blur-sm rounded-2xl border border-border/60 p-5 shadow-sm"
-            >
-              <h3 className="text-[14px] font-medium mb-3">Project Controls</h3>
-              <p className="text-[11px] text-muted-foreground mb-4">
-                Pipeline controls, diagnostics, integration tests & data management for each project.
-              </p>
-              <div className="space-y-1.5">
-                {projects.slice(0, 5).map((p: any) => (
-                  <button
-                    key={p._id}
-                    onClick={() => navigate(`/projects/${p._id}/controls`)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-accent/50 transition-all group border border-border/50 hover:border-primary/20"
-                  >
-                    <div
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: p.color }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-medium truncate group-hover:text-primary transition-colors">{p.name}</p>
-                    </div>
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-primary transition-colors shrink-0" />
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
         </div>
       </div>
     </div>
