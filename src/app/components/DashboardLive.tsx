@@ -639,8 +639,7 @@ export function DashboardLive() {
                 {recentRuns.slice(0, 5).map((run: any) => (
                   <div
                     key={run._id}
-                    onClick={() => navigate(`/projects/${run.projectId}/pipeline`)}
-                    className="px-5 py-3.5 cursor-pointer hover:bg-accent/30 transition-colors"
+                    className="px-5 py-3.5"
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <span
