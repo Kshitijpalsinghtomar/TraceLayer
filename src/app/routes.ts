@@ -1,4 +1,5 @@
 import { createBrowserRouter } from 'react-router';
+import { LandingPage } from './components/LandingPage';
 import { Layout } from './components/Layout';
 import { DashboardLive } from './components/DashboardLive';
 import { ProjectWorkspace } from './components/ProjectWorkspace';
@@ -21,6 +22,10 @@ import { AdminPage } from './components/AdminPage';
 import { ConflictResolutionView } from './components/ConflictResolutionView';
 
 export const router = createBrowserRouter([
+  {
+    path: '/welcome',
+    Component: LandingPage,
+  },
   {
     path: '/',
     Component: Layout,

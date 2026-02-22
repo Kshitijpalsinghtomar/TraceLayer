@@ -45,6 +45,10 @@ import {
   Sparkles,
   Cable,
   ChevronRight,
+  Crosshair,
+  Clock,
+  Users,
+  AlertTriangle,
 } from "lucide-react";
 
 // ─── Type Definitions ─────────────────────────────────────────────────────────
@@ -998,18 +1002,20 @@ export function IntegrationsView() {
           <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.03] to-violet-500/[0.02] p-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
-                { name: "Orchestrator", desc: "Pipeline coordination", emoji: "\uD83C\uDFAF" },
-                { name: "Ingestion", desc: "Source parsing & chunking", emoji: "\uD83D\uDCE5" },
-                { name: "Classification", desc: "Document typing", emoji: "\uD83C\uDFF7\uFE0F" },
-                { name: "Requirement", desc: "Extraction + scoring", emoji: "\uD83D\uDCCB" },
-                { name: "Stakeholder", desc: "People mapping", emoji: "\uD83D\uDC65" },
-                { name: "Decision", desc: "Rationale analysis", emoji: "\u2696\uFE0F" },
-                { name: "Timeline", desc: "Temporal extraction", emoji: "\uD83D\uDCC5" },
-                { name: "Conflict", desc: "Contradiction detection", emoji: "\u26A1" },
-                { name: "Traceability", desc: "Graph construction", emoji: "\uD83D\uDD17" },
+                { name: "Orchestrator", desc: "Pipeline coordination", icon: Crosshair, color: "text-primary" },
+                { name: "Ingestion", desc: "Source parsing & extraction", icon: Database, color: "text-amber-500" },
+                { name: "Classification", desc: "Type & relevance scoring", icon: GitBranch, color: "text-violet-500" },
+                { name: "Requirement", desc: "Requirement extraction", icon: FileText, color: "text-blue-500" },
+                { name: "Stakeholder", desc: "People & influence mapping", icon: Users, color: "text-emerald-500" },
+                { name: "Decision", desc: "Decision & rationale analysis", icon: Zap, color: "text-orange-500" },
+                { name: "Timeline", desc: "Temporal & milestone mapping", icon: Clock, color: "text-cyan-500" },
+                { name: "Conflict", desc: "Contradiction detection", icon: AlertTriangle, color: "text-red-500" },
+                { name: "Traceability", desc: "Knowledge graph links", icon: Network, color: "text-pink-500" },
               ].map((agent) => (
                 <div key={agent.name} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-card/50 border border-border/30">
-                  <span className="text-[16px]">{agent.emoji}</span>
+                  <div className="w-8 h-8 rounded-lg bg-muted/60 flex items-center justify-center shrink-0">
+                    <agent.icon className={`w-4 h-4 ${agent.color}`} />
+                  </div>
                   <div>
                     <p className="text-[13px] font-semibold">{agent.name}</p>
                     <p className="text-[11px] text-muted-foreground">{agent.desc}</p>

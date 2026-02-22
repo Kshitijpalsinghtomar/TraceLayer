@@ -110,6 +110,57 @@ function getPageContext(pathname: string): string {
   return "Unknown";
 }
 
+// ─── Follow-up Suggestions (context-aware) ────────────────────────────────────
+const FOLLOW_UP_MAP: Record<string, { label: string; prompt: string }[]> = {
+  Dashboard: [
+    { label: "Show project health summary", prompt: "Give me a health check across all my projects — any conflicts, low-confidence requirements, or missing data I should address?" },
+    { label: "What should I work on next?", prompt: "Based on the current state of my projects, what's the highest-priority action I should take right now?" },
+    { label: "Explain the pipeline stages", prompt: "Walk me through each stage of the extraction pipeline and what happens at each step." },
+  ],
+  "Project Workspace": [
+    { label: "Summarize this project", prompt: "Give me a concise summary of this project — how many requirements, stakeholders, conflicts, and what's the overall confidence?" },
+    { label: "Find requirement gaps", prompt: "Are there any gaps in the requirements for this project? What areas might be under-specified?" },
+    { label: "Who are the key stakeholders?", prompt: "List the most influential stakeholders in this project and their roles." },
+    { label: "Generate a status report", prompt: "Generate a brief status report for this project that I could share with stakeholders." },
+  ],
+  "BRD Viewer": [
+    { label: "Improve the executive summary", prompt: "How could the executive summary of this BRD be improved? Suggest specific enhancements." },
+    { label: "Check requirement coverage", prompt: "Are there any requirements that lack source traceability? Which areas have low coverage?" },
+    { label: "Identify risks I may have missed", prompt: "Based on the BRD content, are there any risks or conflicts I might have overlooked?" },
+  ],
+  "Knowledge Graph": [
+    { label: "Explain the graph structure", prompt: "Explain how the knowledge graph connects sources, requirements, stakeholders, and decisions." },
+    { label: "Find disconnected nodes", prompt: "Are there any entities in my knowledge graph that aren't well connected? What should I link better?" },
+  ],
+  Integrations: [
+    { label: "Which integration should I add?", prompt: "Based on my project needs, which integrations would be most valuable to connect next?" },
+    { label: "How does data sync work?", prompt: "Explain how data flows from connected integrations into the BRD pipeline." },
+  ],
+  Analytics: [
+    { label: "Interpret these metrics", prompt: "Help me understand the key metrics and what they mean for my project health." },
+    { label: "Spot improvement areas", prompt: "Based on the analytics data, where should I focus to improve my BRD quality?" },
+  ],
+};
+
+const GENERIC_FOLLOW_UPS: { label: string; prompt: string }[] = [
+  { label: "Tell me more", prompt: "Can you elaborate on that? Give me more details and examples." },
+  { label: "What should I do next?", prompt: "Based on what you just told me, what's the best next step I should take?" },
+  { label: "Summarize key points", prompt: "Summarize the key takeaways from your last response in bullet points." },
+];
+
+function getFollowUpSuggestions(page: string, messageCount: number): { label: string; prompt: string }[] {
+  const contextual = FOLLOW_UP_MAP[page] || [];
+  // Mix: pick up to 2 contextual + 1 generic, rotate based on message count to keep them fresh
+  const ctxStart = (Math.floor(messageCount / 2)) % Math.max(contextual.length, 1);
+  const picked: { label: string; prompt: string }[] = [];
+  for (let i = 0; i < Math.min(2, contextual.length); i++) {
+    picked.push(contextual[(ctxStart + i) % contextual.length]);
+  }
+  const genIdx = (Math.floor(messageCount / 2)) % GENERIC_FOLLOW_UPS.length;
+  picked.push(GENERIC_FOLLOW_UPS[genIdx]);
+  return picked;
+}
+
 // ─── Simple Markdown Parser ───────────────────────────────────────────────────
 function parseMarkdown(text: string): string {
   return text
@@ -492,6 +543,27 @@ export function AICopilot() {
                           <motion.div className="w-2 h-2 rounded-full bg-primary/60" animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.3 }} />
                         </div>
                       </div>
+                    </motion.div>
+                  )}
+
+                  {/* Follow-up suggestion chips — show after last assistant reply */}
+                  {!sending && messages.length > 0 && messages[messages.length - 1].role === "assistant" && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 }}
+                      className="flex flex-wrap gap-2 pt-1"
+                    >
+                      {getFollowUpSuggestions(getPageContext(location.pathname), messages.length).map((s, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleSend(s.prompt)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-[11px] font-medium text-primary hover:bg-primary/10 hover:border-primary/30 transition-all"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          {s.label}
+                        </button>
+                      ))}
                     </motion.div>
                   )}
                 </>

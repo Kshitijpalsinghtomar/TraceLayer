@@ -135,6 +135,13 @@ export function Layout() {
 
   const toggleTheme = useCallback(() => setIsDarkMode((v) => !v), []);
 
+  // ─── First-visit redirect to landing page ──────────────────────────
+  useEffect(() => {
+    if (!localStorage.getItem('tracelayer-entered') && location.pathname === '/') {
+      navigate('/welcome', { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Detect if we're inside a project
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
@@ -314,6 +321,7 @@ export function Layout() {
                   { to: `/projects/${recentProject.id}/brd`, icon: FileText, label: 'BRD Document' },
                   { to: `/projects/${recentProject.id}/graph`, icon: Network, label: 'Knowledge Graph' },
                   { to: `/projects/${recentProject.id}/analytics`, icon: BarChart3, label: 'Analytics' },
+                  { to: `/projects/${recentProject.id}/conflicts`, icon: AlertTriangle, label: 'Conflicts' },
                 ].map((item) => (
                   <NavLink
                     key={item.to}
