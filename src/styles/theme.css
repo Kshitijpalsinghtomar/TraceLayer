@@ -1,0 +1,293 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+  --background: #F4F6FC;
+  --foreground: #0F1119;
+  --card: rgba(255, 255, 255, 0.85);
+  --card-foreground: #0F1119;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F1119;
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E0E7FF;
+  --secondary-foreground: #0F1119;
+  --muted: #E2E5F0;
+  --muted-foreground: #4B5068;
+  --accent: #DDE0F4;
+  --accent-foreground: #0F1119;
+  --destructive: #DC2626;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 0, 0, 0.1);
+  --input: transparent;
+  --input-background: #EEF0F8;
+  --switch-background: #9CA3BF;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #4F46E5;
+  --chart-1: #4F46E5;
+  --chart-2: #059669;
+  --chart-3: #D97706;
+  --chart-4: #DC2626;
+  --chart-5: #7C3AED;
+  --radius: 0.75rem;
+  --sidebar: #FAFAFD;
+  --sidebar-foreground: #0F1119;
+  --sidebar-primary: #4F46E5;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E0E7FF;
+  --sidebar-accent-foreground: #0F1119;
+  --sidebar-border: rgba(0, 0, 0, 0.08);
+  --sidebar-ring: #4F46E5;
+}
+
+/* ─── Soft Dark Theme ─────────────────────────────────────────────────────── */
+/* A refined dark palette that mirrors the light theme's indigo warmth.       */
+/* Uses deep navy/slate backgrounds — never pure black — for a premium feel.  */
+.dark {
+  --background: #0F1117;
+  --foreground: #E8EAF2;
+  --card: #171923;
+  --card-foreground: #E8EAF2;
+  --popover: #1A1D2B;
+  --popover-foreground: #E8EAF2;
+  --primary: #818CF8;
+  --primary-foreground: #0F1117;
+  --secondary: #1E2033;
+  --secondary-foreground: #E8EAF2;
+  --muted: #1E2030;
+  --muted-foreground: #9399B2;
+  --accent: #222540;
+  --accent-foreground: #E8EAF2;
+  --destructive: #F87171;
+  --destructive-foreground: #1C1E2E;
+  --border: rgba(255, 255, 255, 0.10);
+  --input: transparent;
+  --input-background: #1C1F2E;
+  --switch-background: #3A3D52;
+  --ring: #818CF8;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --chart-1: #818CF8;
+  --chart-2: #34D399;
+  --chart-3: #FBBF24;
+  --chart-4: #F87171;
+  --chart-5: #A78BFA;
+  --sidebar: #13151F;
+  --sidebar-foreground: #E8EAF2;
+  --sidebar-primary: #818CF8;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #1E2038;
+  --sidebar-accent-foreground: #E8EAF2;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #818CF8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Ensure select elements follow theme in dark mode */
+  select {
+    color: var(--foreground);
+    background-color: var(--card);
+  }
+  select option {
+    color: var(--foreground);
+    background-color: var(--card);
+  }
+
+  /* Ambient gradient mesh for the main content area */
+  .ambient-bg {
+    position: relative;
+  }
+  .ambient-bg::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    right: -30%;
+    width: 80%;
+    height: 80%;
+    background: radial-gradient(ellipse at center, rgba(79, 70, 229, 0.035) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .ambient-bg::after {
+    content: '';
+    position: fixed;
+    bottom: -40%;
+    left: -25%;
+    width: 70%;
+    height: 70%;
+    background: radial-gradient(ellipse at center, rgba(139, 92, 246, 0.025) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Dark mode ambient gradients — softer, deeper hues */
+  .dark .ambient-bg::before {
+    background: radial-gradient(ellipse at center, rgba(129, 140, 248, 0.04) 0%, transparent 70%);
+  }
+  .dark .ambient-bg::after {
+    background: radial-gradient(ellipse at center, rgba(167, 139, 250, 0.03) 0%, transparent 70%);
+  }
+
+  /* Smooth scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--muted);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+  }
+
+  /**
+  * Default typography styles for HTML elements (h1-h4, p, label, button, input).
+  * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
+  */
+
+  html {
+    font-size: var(--font-size);
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  label {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1.5;
+  }
+
+  /* Copilot prose styling */
+  .prose-copilot h2,
+  .prose-copilot h3,
+  .prose-copilot h4 {
+    font-weight: 600;
+  }
+  .prose-copilot li {
+    margin-left: 0.5rem;
+  }
+  .prose-copilot li + li {
+    margin-top: 0.15rem;
+  }
+  .prose-copilot strong {
+    font-weight: 600;
+    color: var(--foreground);
+  }
+  .prose-copilot pre {
+    margin-block: 0.5rem;
+  }
+
+  /* Skip-to-content for keyboard navigation */
+  .skip-link {
+    position: absolute;
+    top: -100%;
+    left: 0;
+    z-index: 999;
+    padding: 0.75rem 1.5rem;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0 0 var(--radius) 0;
+    transition: top 0.15s;
+  }
+  .skip-link:focus {
+    top: 0;
+  }
+
+  /* Focus visible styles */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}

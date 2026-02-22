@@ -1,0 +1,396 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  // ─── Projects ────────────────────────────────────────────────────────────
+  projects: defineTable({
+    name: v.string(),
+    description: v.string(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("uploading"),
+      v.literal("processing"),
+      v.literal("extracted"),
+      v.literal("generating"),
+      v.literal("active"),
+      v.literal("completed")
+    ),
+    outputFormat: v.union(
+      v.literal("brd"),
+      v.literal("prd"),
+      v.literal("both")
+    ),
+    color: v.string(),
+    progress: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    // Aggregated stats (denormalized for speed)
+    sourceCount: v.number(),
+    requirementCount: v.number(),
+    stakeholderCount: v.number(),
+    decisionCount: v.number(),
+    conflictCount: v.number(),
+  }),
+
+  // ─── Sources (uploaded files / ingested data) ────────────────────────────
+  sources: defineTable({
+    projectId: v.id("projects"),
+    name: v.string(),
+    type: v.union(
+      v.literal("email"),
+      v.literal("meeting_transcript"),
+      v.literal("chat_log"),
+      v.literal("document"),
+      v.literal("uploaded_file")
+    ),
+    content: v.string(),
+    rawContent: v.optional(v.string()), // original unprocessed
+    metadata: v.object({
+      author: v.optional(v.string()),
+      date: v.optional(v.string()),
+      channel: v.optional(v.string()),
+      subject: v.optional(v.string()),
+      participants: v.optional(v.array(v.string())),
+      wordCount: v.optional(v.number()),
+      integrationAppId: v.optional(v.string()),
+    }),
+    status: v.union(
+      v.literal("uploaded"),
+      v.literal("classifying"),
+      v.literal("classified"),
+      v.literal("extracting"),
+      v.literal("extracted"),
+      v.literal("failed")
+    ),
+    relevanceScore: v.optional(v.number()), // 0-1 relevance to project
+    storageId: v.optional(v.id("_storage")),
+    createdAt: v.number(),
+  }).index("by_project", ["projectId"])
+    .index("by_status", ["projectId", "status"]),
+
+  // ─── Requirements (core intelligence) ────────────────────────────────────
+  requirements: defineTable({
+    projectId: v.id("projects"),
+    requirementId: v.string(), // e.g., "REQ-001"
+    title: v.string(),
+    description: v.string(),
+    category: v.union(
+      v.literal("functional"),
+      v.literal("non_functional"),
+      v.literal("business"),
+      v.literal("technical"),
+      v.literal("security"),
+      v.literal("performance"),
+      v.literal("compliance"),
+      v.literal("integration")
+    ),
+    priority: v.union(
+      v.literal("critical"),
+      v.literal("high"),
+      v.literal("medium"),
+      v.literal("low")
+    ),
+    status: v.union(
+      v.literal("discovered"),
+      v.literal("pending"),
+      v.literal("under_review"),
+      v.literal("confirmed"),
+      v.literal("rejected"),
+      v.literal("deferred")
+    ),
+    confidenceScore: v.number(), // 0-1
+    // Source traceability
+    sourceId: v.id("sources"),
+    sourceExcerpt: v.string(),
+    // Relationships
+    stakeholderIds: v.array(v.id("stakeholders")),
+    linkedRequirementIds: v.array(v.string()), // REQ-xxx references
+    linkedDecisionIds: v.array(v.string()),
+    // Metadata
+    extractedAt: v.number(),
+    lastModified: v.number(),
+    modifiedBy: v.union(v.literal("ai"), v.literal("user")),
+    // AI reasoning
+    extractionReasoning: v.optional(v.string()),
+    tags: v.array(v.string()),
+  }).index("by_project", ["projectId"])
+    .index("by_category", ["projectId", "category"])
+    .index("by_priority", ["projectId", "priority"])
+    .index("by_source", ["sourceId"]),
+
+  // ─── Stakeholders ────────────────────────────────────────────────────────
+  stakeholders: defineTable({
+    projectId: v.id("projects"),
+    name: v.string(),
+    role: v.string(),
+    department: v.optional(v.string()),
+    influence: v.union(
+      v.literal("decision_maker"),
+      v.literal("influencer"),
+      v.literal("contributor"),
+      v.literal("observer")
+    ),
+    sentiment: v.optional(v.union(
+      v.literal("supportive"),
+      v.literal("neutral"),
+      v.literal("resistant"),
+      v.literal("unknown")
+    )),
+    mentionCount: v.number(),
+    sourceIds: v.array(v.id("sources")),
+    // Relationships — stakeholder ↔ stakeholder connections
+    relatedStakeholderIds: v.array(v.id("stakeholders")),
+    extractedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // ─── Decisions ────────────────────────────────────────────────────────────
+  decisions: defineTable({
+    projectId: v.id("projects"),
+    decisionId: v.string(), // "DEC-001"
+    title: v.string(),
+    description: v.string(),
+    type: v.string(), // flexible — AI may produce varied categories
+    status: v.union(
+      v.literal("proposed"),
+      v.literal("approved"),
+      v.literal("rejected"),
+      v.literal("deferred")
+    ),
+    madeBy: v.optional(v.id("stakeholders")),
+    sourceId: v.id("sources"),
+    sourceExcerpt: v.string(),
+    confidenceScore: v.number(),
+    impactedRequirementIds: v.array(v.string()),
+    extractedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // ─── Timeline Events ─────────────────────────────────────────────────────
+  timelineEvents: defineTable({
+    projectId: v.id("projects"),
+    title: v.string(),
+    description: v.string(),
+    date: v.optional(v.string()),
+    type: v.union(
+      v.literal("milestone"),
+      v.literal("deadline"),
+      v.literal("decision"),
+      v.literal("approval"),
+      v.literal("dependency")
+    ),
+    sourceId: v.optional(v.id("sources")),
+    confidenceScore: v.number(),
+    extractedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // ─── Conflicts (requirement contradictions) ───────────────────────────────
+  conflicts: defineTable({
+    projectId: v.id("projects"),
+    conflictId: v.string(),
+    title: v.string(),
+    description: v.string(),
+    severity: v.union(
+      v.literal("critical"),
+      v.literal("major"),
+      v.literal("minor")
+    ),
+    status: v.union(
+      v.literal("detected"),
+      v.literal("reviewing"),
+      v.literal("resolved"),
+      v.literal("accepted")
+    ),
+    requirementIds: v.array(v.id("requirements")),
+    resolution: v.optional(v.string()),
+    detectedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // ─── Traceability Links (source ↔ requirement ↔ stakeholder graph) ──────
+  traceabilityLinks: defineTable({
+    projectId: v.id("projects"),
+    fromType: v.union(
+      v.literal("source"),
+      v.literal("requirement"),
+      v.literal("stakeholder"),
+      v.literal("decision"),
+      v.literal("conflict"),
+      v.literal("timeline")
+    ),
+    fromId: v.string(), // Convex ID as string
+    toType: v.union(
+      v.literal("source"),
+      v.literal("requirement"),
+      v.literal("stakeholder"),
+      v.literal("decision"),
+      v.literal("conflict"),
+      v.literal("timeline")
+    ),
+    toId: v.string(),
+    relationship: v.string(), // "extracted_from", "proposed_by", "conflicts_with", etc.
+    strength: v.number(), // 0-1
+    createdAt: v.number(),
+  }).index("by_project", ["projectId"])
+    .index("by_from", ["fromType", "fromId"])
+    .index("by_to", ["toType", "toId"]),
+
+  // ─── Generated Documents ──────────────────────────────────────────────────
+  documents: defineTable({
+    projectId: v.id("projects"),
+    type: v.union(v.literal("brd"), v.literal("prd"), v.literal("traceability_matrix")),
+    version: v.number(),
+    content: v.string(), // JSON string of structured document
+    generatedAt: v.number(),
+    generatedFrom: v.object({
+      requirementCount: v.number(),
+      sourceCount: v.number(),
+      stakeholderCount: v.number(),
+      decisionCount: v.number(),
+    }),
+    status: v.union(
+      v.literal("generating"),
+      v.literal("ready"),
+      v.literal("outdated")
+    ),
+  }).index("by_project", ["projectId"])
+    .index("by_type", ["projectId", "type"]),
+
+  // ─── Extraction Runs (pipeline execution tracking) ────────────────────────
+  extractionRuns: defineTable({
+    projectId: v.id("projects"),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("ingesting"),
+      v.literal("classifying"),
+      v.literal("extracting_requirements"),
+      v.literal("extracting_stakeholders"),
+      v.literal("extracting_decisions"),
+      v.literal("extracting_timeline"),
+      v.literal("detecting_conflicts"),
+      v.literal("building_traceability"),
+      v.literal("generating_documents"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    sourcesProcessed: v.number(),
+    requirementsFound: v.number(),
+    stakeholdersFound: v.number(),
+    decisionsFound: v.number(),
+    conflictsFound: v.number(),
+    error: v.optional(v.string()),
+  }).index("by_project", ["projectId"]),
+
+  // ─── Agent Logs (real-time pipeline activity) ─────────────────────────────
+  agentLogs: defineTable({
+    projectId: v.id("projects"),
+    extractionRunId: v.id("extractionRuns"),
+    agent: v.union(
+      v.literal("ingestion_agent"),
+      v.literal("classification_agent"),
+      v.literal("requirement_agent"),
+      v.literal("stakeholder_agent"),
+      v.literal("decision_agent"),
+      v.literal("timeline_agent"),
+      v.literal("conflict_agent"),
+      v.literal("traceability_agent"),
+      v.literal("document_agent"),
+      v.literal("orchestrator"),
+      v.literal("integration_agent")
+    ),
+    level: v.union(
+      v.literal("info"),
+      v.literal("processing"),
+      v.literal("success"),
+      v.literal("warning"),
+      v.literal("error")
+    ),
+    message: v.string(),
+    detail: v.optional(v.string()), // JSON stringified detail
+    timestamp: v.number(),
+  }).index("by_run", ["extractionRunId"])
+    .index("by_project", ["projectId"]),
+
+  // ─── User API Keys ───────────────────────────────────────────────────────
+  apiKeys: defineTable({
+    provider: v.union(
+      v.literal("openai"),
+      v.literal("gemini"),
+      v.literal("anthropic"),
+      v.literal("custom")
+    ),
+    keyHash: v.string(), // hashed, never store raw
+    keyPreview: v.string(), // "sk-...abc"
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    lastUsed: v.optional(v.number()),
+  }),
+
+  // ─── System Settings ──────────────────────────────────────────────────────
+  settings: defineTable({
+    key: v.string(),
+    value: v.string(), // JSON stringified
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  // ─── AI Chat Messages ─────────────────────────────────────────────────────
+  chatMessages: defineTable({
+    projectId: v.id("projects"),
+    role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
+    content: v.string(),
+    metadata: v.optional(v.object({
+      provider: v.optional(v.string()),
+      action: v.optional(v.string()), // "generate_brd", "modify_section", "review", "general"
+      section: v.optional(v.string()),
+    })),
+    timestamp: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // ─── App Integrations ─────────────────────────────────────────────────────
+  integrations: defineTable({
+    /** Which app: "slack", "jira", "notion", "github", "google_drive", etc. */
+    appId: v.string(),
+    /** Display name as entered by user */
+    label: v.optional(v.string()),
+    status: v.union(
+      v.literal("disconnected"),
+      v.literal("connecting"),
+      v.literal("connected"),
+      v.literal("error"),
+      v.literal("paused")
+    ),
+    /** OAuth / API token — in prod this would be in a vault */
+    credentials: v.optional(v.object({
+      accessToken: v.optional(v.string()),        // The actual API token for making requests
+      tokenPreview: v.optional(v.string()),       // "xoxb-...abc" (masked display)
+      scopes: v.optional(v.array(v.string())),
+      expiresAt: v.optional(v.number()),
+      connectionMethod: v.optional(v.string()),   // "oauth" | "api_token" | "import"
+    })),
+    /** Per-integration data scope — what the user chose to sync */
+    dataScope: v.optional(v.object({
+      channels: v.optional(v.array(v.string())),   // Slack channels, Teams channels
+      repos: v.optional(v.array(v.string())),       // GitHub repos
+      projects: v.optional(v.array(v.string())),    // Jira projects, Linear teams
+      pages: v.optional(v.array(v.string())),       // Notion pages, Confluence spaces
+      folders: v.optional(v.array(v.string())),     // Drive/Dropbox folders
+      labels: v.optional(v.array(v.string())),      // Gmail labels
+      dateRange: v.optional(v.object({
+        from: v.optional(v.number()),
+        to: v.optional(v.number()),
+      })),
+      includeComments: v.optional(v.boolean()),
+      includeAttachments: v.optional(v.boolean()),
+    })),
+    /** Optional — link to a specific project */
+    projectId: v.optional(v.id("projects")),
+    /** Sync stats */
+    lastSyncAt: v.optional(v.number()),
+    lastSyncStatus: v.optional(v.string()),
+    itemsSynced: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_app", ["appId"])
+    .index("by_project", ["projectId"])
+    .index("by_status", ["status"]),
+});
