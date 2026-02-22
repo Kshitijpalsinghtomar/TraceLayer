@@ -370,7 +370,7 @@ export function AICopilot() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setIsOpen(true)}
-            className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-primary via-violet-600 to-indigo-700 text-primary-foreground shadow-xl shadow-primary/30 flex items-center justify-center group"
+            className="fixed bottom-20 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-primary via-violet-600 to-indigo-700 text-primary-foreground shadow-xl shadow-primary/30 flex items-center justify-center group"
             aria-label="Open AI Copilot (Ctrl+J)"
             title="AI Copilot — Ctrl+J"
           >

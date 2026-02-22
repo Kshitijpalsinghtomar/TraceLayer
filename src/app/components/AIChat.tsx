@@ -589,7 +589,7 @@ export function AIChat({ projectId }: AIChatProps) {
       </div>
 
       {/* ─── Input Area ───────────────────────────────────────────────────── */}
-      <div className="px-6 pb-4 pt-3 border-t border-border bg-card shrink-0">
+      <div className="px-6 pb-4 pt-3 border-t border-border bg-card shrink-0 pr-8">
         {/* Quick re-action bar when messages exist */}
         {msgList.length > 0 && !sending && !pipelineRunning && (
           <div className="flex items-center gap-1.5 mb-2 overflow-x-auto pb-1">

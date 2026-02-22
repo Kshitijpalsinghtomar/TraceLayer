@@ -78,12 +78,12 @@ export const chat = action({
       `- Conflicts: ${conflicts.length} detected`,
     ];
 
-    // Include source content snippets (first 2000 chars each, up to 5 sources)
+    // Include source content snippets (first 8000 chars each, up to 10 sources)
     if (sources.length > 0) {
       contextParts.push("", "## Source Documents");
-      for (const src of sources.slice(0, 5)) {
+      for (const src of sources.slice(0, 10)) {
         const snippet = src.content
-          ? src.content.substring(0, 2000)
+          ? src.content.substring(0, 8000)
           : "(no content)";
         contextParts.push(
           `### ${src.name} (${src.type.replace(/_/g, " ")}, ${src.metadata?.wordCount || "?"} words)`,
@@ -91,9 +91,9 @@ export const chat = action({
           ""
         );
       }
-      if (sources.length > 5) {
+      if (sources.length > 10) {
         contextParts.push(
-          `... and ${sources.length - 5} more sources not shown`
+          `... and ${sources.length - 10} more sources not shown`
         );
       }
     }

@@ -226,7 +226,7 @@ Return JSON:
 }
 
 Communication source "${source.name}":
-${source.content.substring(0, 4000)}`;
+${source.content.substring(0, 8000)}`;
 
         const classResult = await callAI(
           apiKey,
