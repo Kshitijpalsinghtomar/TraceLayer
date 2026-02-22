@@ -590,7 +590,7 @@ export function DashboardLive() {
                             {status.label}
                           </span>
                         </div>
-                        <p className="text-[12px] text-muted-foreground truncate mt-0.5">
+                        <p className="text-[12px] text-muted-foreground line-clamp-2 mt-0.5">
                           {project.description || "No description"}
                         </p>
                       </div>

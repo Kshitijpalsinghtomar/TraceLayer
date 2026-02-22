@@ -1196,6 +1196,25 @@ export function BRDViewer() {
             {activeSection === "overview" && (
               <SectionWrapper key="overview">
                 <SectionHeader title="Project Overview" subtitle="High-level project context and background" />
+                {/* Quick project facts */}
+                <div className="grid grid-cols-4 gap-3 mb-6">
+                  <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                    <p className="text-[20px] font-bold text-primary">{(sources || []).length}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Sources Analyzed</p>
+                  </div>
+                  <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                    <p className="text-[20px] font-bold text-emerald-600">{(requirements || []).length}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Requirements</p>
+                  </div>
+                  <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                    <p className="text-[20px] font-bold text-amber-600">{(stakeholders || []).length}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Stakeholders</p>
+                  </div>
+                  <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                    <p className="text-[20px] font-bold text-red-600">{(conflicts || []).length}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Conflicts</p>
+                  </div>
+                </div>
                 {brdContent.projectOverview ? (
                   <EditableTextSection
                     sectionKey="projectOverview"
@@ -1210,6 +1229,21 @@ export function BRDViewer() {
                   />
                 ) : (
                   <EmptyState message="Project overview will be generated when the pipeline completes." />
+                )}
+                {/* Project metadata card */}
+                {project && (
+                  <div className="mt-6 bg-gradient-to-r from-primary/4 to-violet-500/4 rounded-2xl border border-primary/10 p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <BookOpen className="w-4 h-4 text-primary/60" />
+                      <span className="text-[12px] font-medium text-primary/80">Project Details</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-[12px]">
+                      <div><span className="text-muted-foreground">Status:</span> <span className="font-medium ml-1 capitalize">{project.status}</span></div>
+                      <div><span className="text-muted-foreground">Created:</span> <span className="font-medium ml-1">{new Date(project._creationTime).toLocaleDateString()}</span></div>
+                      <div><span className="text-muted-foreground">Requirements:</span> <span className="font-medium ml-1">{project.requirementCount || 0}</span></div>
+                      <div><span className="text-muted-foreground">BRD Version:</span> <span className="font-medium ml-1">v{currentDoc?.version || 1}</span></div>
+                    </div>
+                  </div>
                 )}
               </SectionWrapper>
             )}
@@ -1346,6 +1380,36 @@ export function BRDViewer() {
             {activeSection === "functional-analysis" && (
               <SectionWrapper key="functional-analysis">
                 <SectionHeader title="Functional Requirements Analysis" subtitle="Detailed analysis of functional requirement landscape" />
+                {/* Functional requirements stats */}
+                {requirements && requirements.length > 0 && (() => {
+                  const functional = (requirements as any[]).filter((r: any) => r.category === "functional");
+                  const byPriority = { critical: 0, high: 0, medium: 0, low: 0 };
+                  functional.forEach((r: any) => { if (byPriority[r.priority as keyof typeof byPriority] !== undefined) byPriority[r.priority as keyof typeof byPriority]++; });
+                  return (
+                    <div className="grid grid-cols-5 gap-3 mb-6">
+                      <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                        <p className="text-[20px] font-bold text-primary">{functional.length}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">Functional Reqs</p>
+                      </div>
+                      <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                        <p className="text-[20px] font-bold text-rose-600">{byPriority.critical}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">Critical</p>
+                      </div>
+                      <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                        <p className="text-[20px] font-bold text-orange-600">{byPriority.high}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">High</p>
+                      </div>
+                      <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                        <p className="text-[20px] font-bold text-amber-600">{byPriority.medium}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">Medium</p>
+                      </div>
+                      <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                        <p className="text-[20px] font-bold text-blue-600">{byPriority.low}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">Low</p>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {brdContent.functionalAnalysis ? (
                   <EditableTextSection
                     sectionKey="functionalAnalysis"
@@ -1361,6 +1425,28 @@ export function BRDViewer() {
                 ) : (
                   <EmptyState message="Functional analysis will be generated when the pipeline completes." />
                 )}
+                {/* Key functional requirements preview */}
+                {requirements && (() => {
+                  const functional = (requirements as any[]).filter((r: any) => r.category === "functional").slice(0, 5);
+                  if (functional.length === 0) return null;
+                  return (
+                    <div className="mt-6">
+                      <h4 className="text-[13px] font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                        <CheckSquare className="w-4 h-4" />
+                        Key Functional Requirements
+                      </h4>
+                      <div className="space-y-2">
+                        {functional.map((req: any) => (
+                          <div key={req._id} className="bg-card rounded-xl border border-border/50 p-3 flex items-center gap-3">
+                            <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded shrink-0">{req.requirementId}</span>
+                            <span className="text-[12px] font-medium truncate flex-1">{req.title}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${priorityConfig[req.priority]?.className || ''}`}>{priorityConfig[req.priority]?.label || req.priority}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </SectionWrapper>
             )}
 
@@ -1384,6 +1470,38 @@ export function BRDViewer() {
             {activeSection === "nonfunctional-analysis" && (
               <SectionWrapper key="nonfunctional-analysis">
                 <SectionHeader title="Non-Functional Requirements Analysis" subtitle="Performance, security, scalability, and compliance analysis" />
+                {/* Non-functional requirements stats */}
+                {requirements && requirements.length > 0 && (() => {
+                  const nfr = (requirements as any[]).filter((r: any) => r.category === "non_functional" || r.category === "security" || r.category === "performance" || r.category === "compliance");
+                  const catCounts: Record<string, number> = {};
+                  nfr.forEach((r: any) => { catCounts[r.category] = (catCounts[r.category] || 0) + 1; });
+                  return (
+                    <div className="mb-6">
+                      <div className="grid grid-cols-5 gap-3">
+                        <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                          <p className="text-[20px] font-bold text-violet-600">{nfr.length}</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">Non-Functional</p>
+                        </div>
+                        <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                          <p className="text-[20px] font-bold text-red-600">{catCounts.security || 0}</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">Security</p>
+                        </div>
+                        <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                          <p className="text-[20px] font-bold text-emerald-600">{catCounts.performance || 0}</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">Performance</p>
+                        </div>
+                        <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                          <p className="text-[20px] font-bold text-slate-600">{catCounts.compliance || 0}</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">Compliance</p>
+                        </div>
+                        <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                          <p className="text-[20px] font-bold text-cyan-600">{catCounts.non_functional || 0}</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">General NFR</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {brdContent.nonFunctionalAnalysis ? (
                   <EditableTextSection
                     sectionKey="nonFunctionalAnalysis"
@@ -1399,6 +1517,28 @@ export function BRDViewer() {
                 ) : (
                   <EmptyState message="Non-functional analysis will be generated when the pipeline completes." />
                 )}
+                {/* Key non-functional requirements preview */}
+                {requirements && (() => {
+                  const nfr = (requirements as any[]).filter((r: any) => r.category === "non_functional" || r.category === "security" || r.category === "performance" || r.category === "compliance").slice(0, 5);
+                  if (nfr.length === 0) return null;
+                  return (
+                    <div className="mt-6">
+                      <h4 className="text-[13px] font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                        <Shield className="w-4 h-4" />
+                        Key Non-Functional Requirements
+                      </h4>
+                      <div className="space-y-2">
+                        {nfr.map((req: any) => (
+                          <div key={req._id} className="bg-card rounded-xl border border-border/50 p-3 flex items-center gap-3">
+                            <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded shrink-0">{req.requirementId}</span>
+                            <span className="text-[12px] font-medium truncate flex-1">{req.title}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: (categoryConfig[req.category]?.color || '#64748B') + '15', color: categoryConfig[req.category]?.color || '#64748B' }}>{categoryConfig[req.category]?.label || req.category}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </SectionWrapper>
             )}
 
@@ -1406,6 +1546,21 @@ export function BRDViewer() {
             {activeSection === "decision-analysis" && (
               <SectionWrapper key="decision-analysis">
                 <SectionHeader title="Decision Log Analysis" subtitle="Analysis of decisions, governance patterns, and outstanding items" />
+                {/* Decision context stats */}
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                  <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                    <p className="text-[20px] font-bold text-primary">{brdContent.intelligenceSummary?.totalDecisions ?? "—"}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Decisions Logged</p>
+                  </div>
+                  <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                    <p className="text-[20px] font-bold text-emerald-600">{(requirements || []).length}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Requirements Impacted</p>
+                  </div>
+                  <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                    <p className="text-[20px] font-bold text-amber-600">{(stakeholders || []).length}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Stakeholders Involved</p>
+                  </div>
+                </div>
                 {brdContent.decisionAnalysis ? (
                   <EditableTextSection
                     sectionKey="decisionAnalysis"
@@ -1428,6 +1583,27 @@ export function BRDViewer() {
             {activeSection === "risk-assessment" && (
               <SectionWrapper key="risk-assessment">
                 <SectionHeader title="Risk & Conflict Assessment" subtitle="Identified risks, conflicts, and mitigation strategies" />
+                {/* Risk/Conflict severity grid */}
+                {conflicts && conflicts.length > 0 && (
+                  <div className="grid grid-cols-4 gap-3 mb-6">
+                    <div className="bg-card rounded-xl border border-border/50 p-4 text-center">
+                      <p className="text-[20px] font-bold text-red-600">{conflicts.length}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Total Conflicts</p>
+                    </div>
+                    <div className="bg-red-50 dark:bg-red-950/20 rounded-xl border border-red-200/40 dark:border-red-800/30 p-4 text-center">
+                      <p className="text-[20px] font-bold text-red-700 dark:text-red-400">{conflicts.filter((c: any) => c.severity === 'critical').length}</p>
+                      <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">Critical</p>
+                    </div>
+                    <div className="bg-orange-50 dark:bg-orange-950/20 rounded-xl border border-orange-200/40 dark:border-orange-800/30 p-4 text-center">
+                      <p className="text-[20px] font-bold text-orange-700 dark:text-orange-400">{conflicts.filter((c: any) => c.severity === 'major').length}</p>
+                      <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-1">Major</p>
+                    </div>
+                    <div className="bg-yellow-50 dark:bg-yellow-950/20 rounded-xl border border-yellow-200/40 dark:border-yellow-800/30 p-4 text-center">
+                      <p className="text-[20px] font-bold text-yellow-700 dark:text-yellow-400">{conflicts.filter((c: any) => c.severity === 'minor').length}</p>
+                      <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-1">Minor</p>
+                    </div>
+                  </div>
+                )}
                 {brdContent.riskAssessment ? (
                   <EditableTextSection
                     sectionKey="riskAssessment"
@@ -1442,6 +1618,27 @@ export function BRDViewer() {
                   />
                 ) : (
                   <EmptyState message="Risk assessment will be generated when the pipeline completes." />
+                )}
+                {/* Related conflicts preview */}
+                {conflicts && conflicts.length > 0 && (
+                  <div className="mt-6">
+                    <h4 className="text-[13px] font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      Related Conflicts ({conflicts.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {conflicts.slice(0, 4).map((conflict: any) => {
+                        const sevStyle: Record<string, string> = { critical: "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400", major: "bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400", minor: "bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-400" };
+                        return (
+                          <div key={conflict._id} className="bg-card rounded-xl border border-border/50 p-3 flex items-center gap-3">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${sevStyle[conflict.severity] || sevStyle.minor}`}>{conflict.severity}</span>
+                            <span className="text-[12px] font-medium truncate flex-1">{conflict.title}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 ${conflict.status === 'resolved' ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>{conflict.status || 'open'}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </SectionWrapper>
             )}
@@ -1638,6 +1835,17 @@ function EditableTextSection({
 }) {
   const isEditing = editingSection === sectionKey;
 
+  // Helper: render inline parts with bold support
+  const renderInline = (text: string) => {
+    const parts = text.split(/(\*\*.+?\*\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={i} className="font-semibold text-foreground/90">{part.slice(2, -2)}</strong>;
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   // Parse paragraphs into rendered blocks
   const renderContent = (text: string) => {
     const paragraphs = text.split(/\n\n+/).filter(Boolean);
@@ -1645,6 +1853,18 @@ function EditableTextSection({
       <div className="space-y-4">
         {paragraphs.map((para, pi) => {
           const trimmed = para.trim();
+
+          // Heading detection: paragraph that is JUST **Bold Text** (sub-heading)
+          const headingMatch = trimmed.match(/^\*\*(.+?)\*\*:?$/);
+          if (headingMatch && trimmed.length < 120) {
+            return (
+              <h4 key={pi} className="text-[14px] font-semibold text-foreground/90 pt-3 pb-1 border-b border-border/30 flex items-center gap-2">
+                <span className="w-1 h-4 rounded-full bg-primary/50" />
+                {headingMatch[1]}
+              </h4>
+            );
+          }
+
           // Bullet list block
           if (trimmed.split("\n").every(l => l.trim().startsWith("- ") || l.trim().startsWith("• ") || l.trim() === "")) {
             const items = trimmed.split("\n").filter(l => l.trim().startsWith("- ") || l.trim().startsWith("• "));
@@ -1653,22 +1873,36 @@ function EditableTextSection({
                 {items.map((item, ii) => (
                   <li key={ii} className="flex items-start gap-2.5 text-[13.5px] leading-[1.75] text-foreground/80">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary/40 mt-2.5 shrink-0" />
-                    <span>{item.replace(/^[-•]\s*/, "").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")}</span>
+                    <span>{renderInline(item.replace(/^[-•]\s*/, ""))}</span>
                   </li>
                 ))}
               </ul>
             );
           }
+
+          // Numbered list block (1. item, 2. item or 1) item)
+          const lines = trimmed.split("\n");
+          if (lines.length >= 2 && lines.filter(l => l.trim()).every(l => /^\s*\d+[.)]\s/.test(l.trim()))) {
+            const items = lines.filter(l => /^\s*\d+[.)]\s/.test(l.trim()));
+            return (
+              <div key={pi} className="space-y-2 ml-1">
+                {items.map((item, ii) => {
+                  const itemText = item.replace(/^\s*\d+[.)]\s*/, "");
+                  return (
+                    <div key={ii} className="flex items-start gap-3 text-[13.5px] leading-[1.75] text-foreground/80">
+                      <span className="w-6 h-6 rounded-lg bg-primary/8 text-primary text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">{ii + 1}</span>
+                      <span>{renderInline(itemText)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }
+
           // Regular paragraph — render with inline bold support
-          const parts = trimmed.replace(/\n/g, " ").split(/(\*\*.+?\*\*)/g);
           return (
             <p key={pi} className="text-[13.5px] leading-[1.85] text-foreground/80">
-              {parts.map((part, i) => {
-                if (part.startsWith("**") && part.endsWith("**")) {
-                  return <strong key={i} className="font-semibold text-foreground/90">{part.slice(2, -2)}</strong>;
-                }
-                return <span key={i}>{part}</span>;
-              })}
+              {renderInline(trimmed.replace(/\n/g, " "))}
             </p>
           );
         })}
