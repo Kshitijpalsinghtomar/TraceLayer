@@ -454,13 +454,13 @@ export function AgentPipelineView() {
           {/* Results when completed */}
           {latestRun?.status === "completed" && (
             <div className="flex items-center gap-6">
-              {[
+              {([
                 { label: "Sources", value: latestRun.sourcesProcessed, color: "#F59E0B" },
                 { label: "Requirements", value: latestRun.requirementsFound, color: "#6366F1" },
                 { label: "Stakeholders", value: latestRun.stakeholdersFound, color: "#10B981" },
                 { label: "Decisions", value: latestRun.decisionsFound, color: "#8B5CF6" },
                 { label: "Conflicts", value: latestRun.conflictsFound, color: "#EF4444" },
-              ].map((stat) => (
+              ] as const).map((stat) => (
                 <div key={stat.label} className="text-center">
                   <p className="text-[18px] font-bold" style={{ color: stat.color }}>
                     {stat.value}
@@ -940,12 +940,12 @@ export function AgentPipelineView() {
                   className="overflow-hidden mt-3 space-y-3"
                 >
                   <div className="grid grid-cols-2 gap-2">
-                    {[
+                    {([
                       { label: "Total Runs", value: diagnostics.runs.total, color: "#6366F1" },
                       { label: "Success Rate", value: diagnostics.runs.total > 0 ? `${Math.round((diagnostics.runs.completed / diagnostics.runs.total) * 100)}%` : "—", color: "#10B981" },
                       { label: "Avg Duration", value: diagnostics.runs.avgDurationSec > 0 ? `${diagnostics.runs.avgDurationSec}s` : "—", color: "#F59E0B" },
                       { label: "Errors", value: diagnostics.errors.count, color: diagnostics.errors.count > 0 ? "#EF4444" : "#10B981" },
-                    ].map((m) => (
+                    ] as const).map((m) => (
                       <div key={m.label} className="bg-muted/30 rounded-xl p-2.5 text-center">
                         <p className="text-[18px] font-bold" style={{ color: m.color }}>{m.value}</p>
                         <p className="text-[9px] text-muted-foreground">{m.label}</p>
@@ -998,14 +998,14 @@ export function AgentPipelineView() {
                     <div className="bg-muted/20 rounded-xl p-3">
                       <p className="text-[10px] text-muted-foreground mb-2 font-medium">Extraction Summary</p>
                       <div className="grid grid-cols-3 gap-1.5">
-                        {[
+                        {([
                           { label: "Requirements", value: diagnostics.extraction.requirements },
                           { label: "Stakeholders", value: diagnostics.extraction.stakeholders },
                           { label: "Decisions", value: diagnostics.extraction.decisions },
                           { label: "Timeline", value: diagnostics.extraction.timelineEvents },
                           { label: "Conflicts", value: diagnostics.extraction.conflicts },
                           { label: "Documents", value: diagnostics.extraction.documents },
-                        ].map((item) => (
+                        ] as const).map((item) => (
                           <div key={item.label} className="text-center">
                             <p className="text-[14px] font-semibold text-foreground">{item.value}</p>
                             <p className="text-[8px] text-muted-foreground">{item.label}</p>
@@ -1052,13 +1052,13 @@ export function AgentPipelineView() {
                   </button>
                   {testResults && (
                     <div className="space-y-1">
-                      {[
+                      {([
                         { key: "apiKey", label: "API Key Configuration" },
                         { key: "sources", label: "Source Data Available" },
                         { key: "integrations", label: "Integration Connectivity" },
                         { key: "project", label: "Project State Valid" },
                         { key: "pipeline", label: "Pipeline Health" },
-                      ].map((test) => {
+                      ] as const).map((test) => {
                         const status = testResults[test.key];
                         return (
                           <div key={test.key} className="flex items-center justify-between py-1.5 px-2.5 rounded-lg text-[11px] bg-muted/20">

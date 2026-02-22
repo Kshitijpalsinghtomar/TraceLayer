@@ -253,6 +253,10 @@ export const getDiagnostics = query({
       .query("documents")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
+    const timelineEvents = await ctx.db
+      .query("timelineEvents")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
 
     // Error counts from latest run
     const errorLogs = logs.filter((l) => l.level === "error");
@@ -294,6 +298,7 @@ export const getDiagnostics = query({
         requirements: requirements.length,
         stakeholders: stakeholders.length,
         decisions: decisions.length,
+        timelineEvents: timelineEvents.length,
         conflicts: conflicts.length,
         documents: documents.length,
       },

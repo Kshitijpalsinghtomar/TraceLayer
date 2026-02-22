@@ -20,11 +20,16 @@ import { ProfileView } from './components/ProfileView';
 import { ControlCenterPage } from './components/ControlCenterPage';
 import { AdminPage } from './components/AdminPage';
 import { ConflictResolutionView } from './components/ConflictResolutionView';
+import { SharedBRDView } from './components/SharedBRDView';
 
 export const router = createBrowserRouter([
   {
     path: '/welcome',
     Component: LandingPage,
+  },
+  {
+    path: '/shared/:token',
+    Component: SharedBRDView,
   },
   {
     path: '/',

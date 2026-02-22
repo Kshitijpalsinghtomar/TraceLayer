@@ -165,87 +165,101 @@ Conflicts exist when:
 export const BRD_TEMPLATE = `
 # TraceLayer Intelligence-Driven BRD Generation Protocol
 
-## IMPORTANT: This BRD must be COMPREHENSIVE and DETAILED.
-Do NOT produce short summaries. Each section should be multiple paragraphs of professional business writing.
-The executive summary alone should be 4-6 paragraphs.
-Business objectives should have detailed descriptions with context.
-All analysis sections should provide actionable insights, not just list items.
+## CRITICAL WRITING STANDARDS — Follow These Exactly
 
-## Structure:
+### Length & Depth Requirements
+- The executiveSummary MUST be 800-1500 words (4-6 full paragraphs). NEVER a short blurb.
+- Every analysis section (stakeholderAnalysis, functionalAnalysis, nonFunctionalAnalysis, decisionAnalysis, riskAssessment) MUST be 300-600 words of substantive professional writing.
+- Business objective descriptions MUST be 3-5 sentences each with context and rationale.
+- Scope items MUST include explanations, not just bullet labels.
+
+### Writing Quality Rules
+1. **Use active voice and professional business language.** Write like a senior business analyst presenting to executives.
+2. **ALWAYS cite specific data.** Reference requirement IDs (e.g., "REQ-003"), stakeholder names, decision IDs (e.g., "DEC-002"), and confidence scores inline in your narrative. A paragraph without specific references is a failed paragraph.
+3. **Start each paragraph with a topic sentence** that makes a clear analytical claim, then support it with evidence from the extracted data.
+4. **Synthesize across sources — do NOT repeat raw data.** Your job is to find patterns, draw connections, identify themes, and produce insights that are NOT obvious from reading the raw requirements list.
+5. **Be specific and actionable.** Instead of "The system needs good security," write "The system requires AES-256 encryption at rest (REQ-007, confidence: 92%) and OAuth 2.0 authentication (REQ-012, confidence: 85%), reflecting the compliance requirements raised by [stakeholder name]."
+6. **Never use generic filler phrases** like "various stakeholders," "multiple requirements," or "comprehensive solution." Always name the actual stakeholders, count the actual requirements, and describe the actual solution.
+7. **Consolidate duplicate requirements.** If the same requirement appears from multiple sources, merge them in your analysis and note the convergence as evidence of importance.
+
+### Domain Framing Rule
+The executive summary MUST begin with a paragraph that establishes the business domain and project context based on what the communications reveal. Explain WHAT the project is about, WHO is involved, and WHY it matters — derived from the actual source content, not generic project management language.
+
+## Document Structure
 
 ### Section 1: Executive Summary (executiveSummary)
-Write 4-6 paragraphs covering:
-- Project overview and business context  
-- Key findings from communication analysis
-- Summary of extracted requirements with breakdown by category  
-- Critical stakeholder dynamics and decision patterns
-- High-level risk assessment and conflict analysis
-- Recommended next steps and priorities
+Write 4-6 paragraphs (800-1500 words) covering:
+- Business domain context and project purpose (derived from source analysis)
+- Key findings from communication analysis with specific numbers
+- Requirements landscape: breakdown by category and priority, with standout findings
+- Stakeholder dynamics: who are the key players, what positions do they hold, where is alignment/misalignment
+- Risk profile: critical conflicts, confidence gaps, and their business impact
+- Recommended next steps and immediate actions with clear owners
 
 ### Section 2: Project Overview (projectOverview)
-Write 2-3 paragraphs covering:
-- What this project is about based on the analyzed communications
-- The business problem being solved
-- The scope and boundaries identified from source documents
+Write 2-3 substantive paragraphs covering:
+- What this project is about based on the analyzed communications (not generic — reference actual topics from the sources)
+- The business problem being solved and why existing approaches are insufficient
+- Scope boundaries and key constraints identified from source documents
 
 ### Section 3: Business Objectives (businessObjectives)
 For each objective provide:
-- Clear, actionable title
-- Detailed multi-sentence description of the objective, its context, and why it matters
-- Specific Success Criteria / KPIs  
-- Which requirements support this objective
-- Which stakeholders are responsible
+- Clear, actionable title (not vague)
+- 3-5 sentence description with business context, rationale, and expected impact
+- Specific measurable success criteria / KPIs (quantified where possible)
+- linkedRequirements: list of REQ-xxx IDs that support this objective
+- metrics: concrete KPIs
+- owner: specific stakeholder name responsible
 
 ### Section 4: Scope Definition (scopeDefinition)
-Write detailed paragraphs covering:
-- inScope: What is explicitly within the project boundaries (list with explanations)
-- outOfScope: What is explicitly excluded (list with reasoning)
-- assumptions: Key assumptions made during analysis
-- constraints: Technical, business, or organizational constraints identified
+- inScope: Each item must be a sentence explaining what is included AND why (not just a label)
+- outOfScope: Each item must explain what is excluded AND the reasoning behind the exclusion
+- assumptions: Key assumptions with their risk if invalidated
+- constraints: Technical, business, regulatory, or organizational constraints with their source
 
 ### Section 5: Stakeholder Analysis (stakeholderAnalysis)
-Write a detailed narrative analysis covering:
-- Overview of stakeholder landscape
-- Key power dynamics and influence patterns
-- Communication frequency and sentiment trends
-- Risks related to stakeholder alignment
-- Recommendations for stakeholder management
+Write 300-600 words of narrative analysis:
+- Map the stakeholder landscape: how many, what types, distribution of influence levels
+- Identify power dynamics: who are the decision makers vs. contributors, and where do their interests align or diverge
+- Analyze sentiment patterns: which stakeholders are supportive vs. resistant, and what drives their positions
+- Highlight alignment risks: where might stakeholder disagreements block progress
+- Provide specific management recommendations for each key stakeholder
 
-### Section 6: Functional Requirements Analysis (functionalAnalysis)  
-Write detailed analysis (not just a list) covering:
-- Overview of functional requirement landscape
-- Grouping by feature area / domain
-- Dependency chains between requirements
-- Coverage gaps identified
-- Priority justifications  
+### Section 6: Functional Requirements Analysis (functionalAnalysis)
+Write 300-600 words of analysis (NOT just a list):
+- Group requirements into functional clusters/feature areas and describe each cluster
+- Identify the most critical functional requirements and justify why
+- Map dependency chains: which requirements depend on others
+- Identify coverage gaps: what areas of functionality seem underspecified
+- Assess implementation complexity and sequencing recommendations
 
 ### Section 7: Non-Functional Requirements Analysis (nonFunctionalAnalysis)
-Write detailed paragraphs covering:
-- Performance requirements and benchmarks
-- Security and compliance requirements
-- Scalability and reliability expectations
-- Integration requirements overview
-- Technical constraints and their impact
+Write 300-600 words covering:
+- Performance requirements with specific benchmarks cited
+- Security and compliance posture: what security requirements were identified and their confidence
+- Scalability and reliability expectations with measurable targets
+- Integration requirements: what external systems must connect and how
+- Technical constraints and their impact on architecture decisions
 
 ### Section 8: Decision Log Analysis (decisionAnalysis)
-Write analysis covering:
-- Summary of key decisions made
-- Decision patterns and governance observed
-- Outstanding decisions that need resolution
-- Impact of decisions on requirements
+Write 300-500 words covering:
+- Summary of confirmed decisions with their IDs, owners, and status
+- Decision governance patterns: how are decisions being made, by whom, and through what process
+- Outstanding/deferred decisions that need resolution and their blocking impact
+- How specific decisions constrain or enable requirements
 
 ### Section 9: Risk & Conflict Assessment (riskAssessment)
-Write detailed analysis covering:
-- Overview of detected conflicts and their severity
-- Root cause analysis of conflicts
-- Impact on project timeline and scope
-- Specific resolution recommendations for each conflict
-- Overall risk score and mitigation strategy
+Write 300-600 words covering:
+- Overview of detected conflicts by severity (cite specific conflict IDs and the requirements involved)
+- Root cause analysis: why do these conflicts exist and what organizational dynamics drive them
+- Business impact analysis: what happens if conflicts remain unresolved
+- Specific resolution recommendations for each critical/major conflict
+- Overall project risk score and mitigation strategy
 
 ### Section 10: Confidence & Coverage Report (confidenceReport)
-Write analysis covering:
-- Overall extraction confidence assessment
-- Source coverage map — what was well-covered vs. gaps
-- Low-confidence items that need human review
-- Actionable recommendations for improving data quality
+Provide structured analysis:
+- Distribution of confidence scores across all requirements
+- Which areas have the strongest evidence and which have gaps
+- Specific low-confidence items that require human review and validation
+- Actionable recommendations: what additional sources or stakeholder conversations would improve coverage
 `;

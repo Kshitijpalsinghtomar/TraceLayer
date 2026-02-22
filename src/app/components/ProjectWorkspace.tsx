@@ -6,7 +6,7 @@
  *
  * Flow: Upload resources → Select integration app → Generate BRD → View & Chat
  */
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { useParams, useNavigate, useSearchParams } from "react-router";
@@ -141,15 +141,15 @@ type WorkspaceTab = "resources" | "brd" | "chat";
 
 // ─── Pipeline Stage Config ─────────────────────────────────────────────────
 const PIPELINE_STAGES = [
-  { key: "ingesting",               label: "Ingesting",     icon: Database,       color: "#F59E0B" },
-  { key: "classifying",             label: "Classifying",   icon: GitBranch,      color: "#8B5CF6" },
-  { key: "extracting_requirements", label: "Requirements",  icon: FileText,       color: "#3B82F6" },
-  { key: "extracting_stakeholders", label: "Stakeholders",  icon: Users,          color: "#10B981" },
-  { key: "extracting_decisions",    label: "Decisions",     icon: Zap,            color: "#F97316" },
-  { key: "extracting_timeline",     label: "Timeline",      icon: Clock,          color: "#06B6D4" },
-  { key: "detecting_conflicts",     label: "Conflicts",     icon: AlertTriangle,  color: "#EF4444" },
-  { key: "building_traceability",   label: "Traceability",  icon: Network,        color: "#EC4899" },
-  { key: "generating_documents",    label: "Generating BRD", icon: FileText,      color: "#22C55E" },
+  { key: "ingesting", label: "Ingesting", icon: Database, color: "#F59E0B" },
+  { key: "classifying", label: "Classifying", icon: GitBranch, color: "#8B5CF6" },
+  { key: "extracting_requirements", label: "Requirements", icon: FileText, color: "#3B82F6" },
+  { key: "extracting_stakeholders", label: "Stakeholders", icon: Users, color: "#10B981" },
+  { key: "extracting_decisions", label: "Decisions", icon: Zap, color: "#F97316" },
+  { key: "extracting_timeline", label: "Timeline", icon: Clock, color: "#06B6D4" },
+  { key: "detecting_conflicts", label: "Conflicts", icon: AlertTriangle, color: "#EF4444" },
+  { key: "building_traceability", label: "Traceability", icon: Network, color: "#EC4899" },
+  { key: "generating_documents", label: "Generating BRD", icon: FileText, color: "#22C55E" },
 ];
 
 /** Live pipeline progress banner — shown in workspace when pipeline is active */
@@ -215,13 +215,12 @@ function LivePipelineBanner({ projectId }: { projectId: string }) {
                 <div key={stage.key} className="flex items-center flex-1">
                   <div className="flex flex-col items-center flex-1">
                     <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 relative ${
-                        isDone
-                          ? "bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400"
-                          : isCurrent
-                            ? "ring-1 ring-offset-1 ring-offset-transparent shadow-sm"
-                            : "bg-muted/60 text-muted-foreground/40"
-                      }`}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 relative ${isDone
+                        ? "bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400"
+                        : isCurrent
+                          ? "ring-1 ring-offset-1 ring-offset-transparent shadow-sm"
+                          : "bg-muted/60 text-muted-foreground/40"
+                        }`}
                       style={isCurrent ? { backgroundColor: `${stage.color}20`, color: stage.color, outlineColor: stage.color } : {}}
                       title={stage.label}
                     >
@@ -248,13 +247,12 @@ function LivePipelineBanner({ projectId }: { projectId: string }) {
             })}
           </div>
 
-          <button
-            onClick={() => navigate(`/projects/${projectId}/pipeline`)}
-            className="text-[11px] font-medium text-primary hover:text-primary/80 flex items-center gap-1.5 shrink-0 bg-primary/8 dark:bg-primary/15 hover:bg-primary/12 px-3 py-1.5 rounded-lg transition-colors"
+          <span
+            className="text-[11px] font-medium text-primary flex items-center gap-1.5 shrink-0 bg-primary/8 dark:bg-primary/15 px-3 py-1.5 rounded-lg select-none"
           >
             <Activity className="w-3 h-3" />
-            View Live
-          </button>
+            Live
+          </span>
         </div>
 
         {/* Progress bar */}
@@ -318,6 +316,11 @@ export function ProjectWorkspace() {
   );
   const integrations = useQuery(api.integrations.list, {});
   const uploadSource = useMutation(api.sources.upload);
+  const runPipeline = useAction(api.extraction.runExtractionPipeline);
+  const storedKeyGemini = useQuery(api.apiKeys.getKeyForProvider, { provider: "gemini" });
+  const storedKeyOpenai = useQuery(api.apiKeys.getKeyForProvider, { provider: "openai" });
+  const storedKeyAnthropic = useQuery(api.apiKeys.getKeyForProvider, { provider: "anthropic" });
+  const activeKeys = useQuery(api.apiKeys.getActiveKeys);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const validTabs: WorkspaceTab[] = ["resources", "brd", "chat"];
@@ -331,6 +334,31 @@ export function ProjectWorkspace() {
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [disabledIntegrations, setDisabledIntegrations] = useState<Set<string>>(new Set());
+  const [generatingBRD, setGeneratingBRD] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
+  // Resolve API key for direct pipeline trigger
+  const resolvedApiKey = storedKeyOpenai || storedKeyGemini || storedKeyAnthropic;
+  const resolvedProvider: "openai" | "gemini" | "anthropic" = storedKeyOpenai ? "openai" : storedKeyGemini ? "gemini" : "anthropic";
+  const hasApiKey = !!resolvedApiKey;
+
+  const handleGenerateBRD = async () => {
+    if (!resolvedApiKey || generatingBRD) return;
+    setGeneratingBRD(true);
+    setGenerateError(null);
+    try {
+      await runPipeline({
+        projectId: projectId as Id<"projects">,
+        provider: resolvedProvider,
+        apiKey: resolvedApiKey,
+      });
+      setActiveTab("brd");
+    } catch (e: any) {
+      setGenerateError(e.message || "Pipeline failed — check your API key in Settings");
+    } finally {
+      setGeneratingBRD(false);
+    }
+  };
 
   // Check if BRD exists
   const brdDoc = useMemo(() => {
@@ -440,10 +468,10 @@ export function ProjectWorkspace() {
             <h1 className="text-[16px] font-semibold truncate">{project.name}</h1>
             <span
               className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${project.status === "active" || project.status === "completed"
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200/50"
-                  : project.status === "processing" || project.status === "generating"
-                    ? "bg-blue-50 text-blue-700 border border-blue-200/50"
-                    : "bg-muted text-muted-foreground"
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200/50"
+                : project.status === "processing" || project.status === "generating"
+                  ? "bg-blue-50 text-blue-700 border border-blue-200/50"
+                  : "bg-muted text-muted-foreground"
                 }`}
             >
               {project.status}
@@ -474,18 +502,16 @@ export function ProjectWorkspace() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium border-b-2 transition-all ${
-                  activeTab === tab.id
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                }`}
+                className={`flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium border-b-2 transition-all ${activeTab === tab.id
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                  }`}
               >
                 <tab.icon className="w-4 h-4" />
                 {tab.label}
                 {tab.count !== null && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                    activeTab === tab.id ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                  }`}>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                    }`}>
                     {tab.count}
                   </span>
                 )}
@@ -512,11 +538,10 @@ export function ProjectWorkspace() {
                   onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                   onDragLeave={() => setIsDragging(false)}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all mb-6 ${
-                    isDragging
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/30 hover:bg-primary/2"
-                  }`}
+                  className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all mb-6 ${isDragging
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/30 hover:bg-primary/2"
+                    }`}
                 >
                   <input
                     ref={fileInputRef}
@@ -555,11 +580,10 @@ export function ProjectWorkspace() {
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className={`mb-4 px-4 py-3 rounded-xl text-[13px] flex items-center gap-2 ${
-                        uploadStatus.type === "success"
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : "bg-red-50 text-red-700 border border-red-200"
-                      }`}
+                      className={`mb-4 px-4 py-3 rounded-xl text-[13px] flex items-center gap-2 ${uploadStatus.type === "success"
+                        ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                        : "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
+                        }`}
                     >
                       {uploadStatus.type === "success" ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
                       {uploadStatus.message}
@@ -583,11 +607,10 @@ export function ProjectWorkspace() {
                         return (
                           <div
                             key={intg._id}
-                            className={`bg-card rounded-xl border p-3 flex items-center gap-3 transition-all duration-200 ${
-                              isEnabled
-                                ? "border-border/50 hover:border-primary/20"
-                                : "border-border/30 opacity-50"
-                            }`}
+                            className={`bg-card rounded-xl border p-3 flex items-center gap-3 transition-all duration-200 ${isEnabled
+                              ? "border-border/50 hover:border-primary/20"
+                              : "border-border/30 opacity-50"
+                              }`}
                           >
                             <div
                               className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
@@ -610,15 +633,13 @@ export function ProjectWorkspace() {
                                   return next;
                                 })
                               }
-                              className={`relative w-9 h-5 rounded-full transition-colors duration-200 shrink-0 ${
-                                isEnabled ? "bg-primary" : "bg-muted"
-                              }`}
+                              className={`relative w-9 h-5 rounded-full transition-colors duration-200 shrink-0 ${isEnabled ? "bg-primary" : "bg-muted"
+                                }`}
                               aria-label={`${isEnabled ? "Disable" : "Enable"} ${meta.label} for AI`}
                             >
                               <span
-                                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                                  isEnabled ? "translate-x-4" : ""
-                                }`}
+                                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isEnabled ? "translate-x-4" : ""
+                                  }`}
                               />
                             </button>
                           </div>
@@ -668,13 +689,12 @@ export function ProjectWorkspace() {
                               </p>
                             </div>
                             <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${
-                                source.status === "extracted"
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : source.status === "uploaded"
-                                    ? "bg-blue-50 text-blue-700"
-                                    : "bg-muted text-muted-foreground"
-                              }`}
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${source.status === "extracted"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : source.status === "uploaded"
+                                  ? "bg-blue-50 text-blue-700"
+                                  : "bg-muted text-muted-foreground"
+                                }`}
                             >
                               {source.status}
                             </span>
@@ -699,19 +719,34 @@ export function ProjectWorkspace() {
                         <Sparkles className="w-5 h-5 text-primary" />
                       </div>
                       <div className="flex-1">
-                        <p className="text-[14px] font-semibold text-foreground">Ready to generate BRD</p>
+                        <p className="text-[14px] font-semibold text-foreground">
+                          {generatingBRD ? "Generating BRD..." : "Ready to generate BRD"}
+                        </p>
                         <p className="text-[12px] text-muted-foreground">
-                          {sourceList.length} source{sourceList.length > 1 ? "s" : ""} uploaded. Switch to the Chat tab to tell the AI to analyze them and generate a BRD.
+                          {sourceList.length} source{sourceList.length > 1 ? "s" : ""} uploaded.
+                          {hasApiKey
+                            ? " 9 AI agents will extract requirements and generate your BRD."
+                            : " Configure an API key in AI Settings first."}
                         </p>
                       </div>
                       <button
-                        onClick={() => setActiveTab("chat")}
-                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-medium hover:bg-primary/90 transition-colors flex items-center gap-2 shrink-0"
+                        onClick={handleGenerateBRD}
+                        disabled={!hasApiKey || generatingBRD}
+                        className="px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:bg-primary/90 transition-colors flex items-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20"
                       >
-                        <MessageCircle className="w-4 h-4" />
-                        Start Chat
+                        {generatingBRD ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+                        ) : (
+                          <><Sparkles className="w-4 h-4" /> Generate BRD</>
+                        )}
                       </button>
                     </div>
+                    {generateError && (
+                      <div className="mt-3 px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-[12px] text-red-700 dark:text-red-300 flex items-center gap-2">
+                        <XCircle className="w-3.5 h-3.5 shrink-0" />
+                        {generateError}
+                      </div>
+                    )}
                   </div>
                 )}
               </motion.div>
@@ -806,7 +841,9 @@ export function ProjectWorkspace() {
                     </div>
                     <h3 className="text-[18px] font-semibold mb-2">No BRD Generated Yet</h3>
                     <p className="text-[14px] text-muted-foreground mb-6 text-center max-w-md">
-                      Upload your documents in the Resources tab, then use the Chat to tell the AI to analyze them and generate a BRD.
+                      {sourceList.length > 0
+                        ? `You have ${sourceList.length} source${sourceList.length > 1 ? "s" : ""} uploaded. Generate a BRD now or upload more resources.`
+                        : "Upload your documents in the Resources tab, then generate a BRD."}
                     </p>
                     <div className="flex items-center gap-3">
                       <button
@@ -815,13 +852,27 @@ export function ProjectWorkspace() {
                       >
                         Upload Resources
                       </button>
-                      <button
-                        onClick={() => setActiveTab("chat")}
-                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-medium hover:bg-primary/90 transition-colors flex items-center gap-2"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                        Chat with AI
-                      </button>
+                      {sourceList.length > 0 && hasApiKey ? (
+                        <button
+                          onClick={handleGenerateBRD}
+                          disabled={generatingBRD}
+                          className="px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:bg-primary/90 transition-colors flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-primary/20"
+                        >
+                          {generatingBRD ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+                          ) : (
+                            <><Sparkles className="w-4 h-4" /> Generate BRD</>
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setActiveTab("chat")}
+                          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-medium hover:bg-primary/90 transition-colors flex items-center gap-2"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          Chat with AI
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

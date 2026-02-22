@@ -25,6 +25,7 @@ import type * as pipeline from "../pipeline.js";
 import type * as projects from "../projects.js";
 import type * as requirements from "../requirements.js";
 import type * as settings from "../settings.js";
+import type * as sharing from "../sharing.js";
 import type * as sources from "../sources.js";
 import type * as stakeholders from "../stakeholders.js";
 import type * as timeline from "../timeline.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   requirements: typeof requirements;
   settings: typeof settings;
+  sharing: typeof sharing;
   sources: typeof sources;
   stakeholders: typeof stakeholders;
   timeline: typeof timeline;

@@ -393,4 +393,30 @@ export default defineSchema({
   }).index("by_app", ["appId"])
     .index("by_project", ["projectId"])
     .index("by_status", ["status"]),
+
+  // ─── Shared Links (public BRD sharing with access controls) ────────────────
+  sharedLinks: defineTable({
+    projectId: v.id("projects"),
+    /** Unique share token (used in URL) */
+    token: v.string(),
+    /** Access level */
+    permission: v.union(
+      v.literal("view"),
+      v.literal("comment"),
+      v.literal("edit")
+    ),
+    /** Optional password protection */
+    password: v.optional(v.string()),
+    /** Optional expiration timestamp */
+    expiresAt: v.optional(v.number()),
+    /** Whether the link is active */
+    isActive: v.boolean(),
+    /** Creator info */
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+    /** Access stats */
+    accessCount: v.number(),
+    lastAccessedAt: v.optional(v.number()),
+  }).index("by_token", ["token"])
+    .index("by_project", ["projectId"]),
 });

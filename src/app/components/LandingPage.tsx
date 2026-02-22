@@ -344,10 +344,10 @@ function FeaturePreview({ type }: { type: string }) {
     return (
       <div className="mt-5 relative h-14">
         <svg className="w-full h-full" viewBox="0 0 200 56">
-          {[[30,20,80,15],[80,15,140,35],[140,35,180,12],[30,20,100,45],[100,45,140,35],[80,15,100,45]].map(([x1,y1,x2,y2], i) => (
+          {[[30, 20, 80, 15], [80, 15, 140, 35], [140, 35, 180, 12], [30, 20, 100, 45], [100, 45, 140, 35], [80, 15, 100, 45]].map(([x1, y1, x2, y2], i) => (
             <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(236,72,153,0.2)" strokeWidth={1} />
           ))}
-          {[[30,20,"#818CF8"],[80,15,"#3B82F6"],[140,35,"#EC4899"],[180,12,"#10B981"],[100,45,"#F97316"]].map(([cx,cy,c], i) => (
+          {[[30, 20, "#818CF8"], [80, 15, "#3B82F6"], [140, 35, "#EC4899"], [180, 12, "#10B981"], [100, 45, "#F97316"]].map(([cx, cy, c], i) => (
             <circle key={i} cx={cx as number} cy={cy as number} r={4} fill={c as string} opacity={0.6} />
           ))}
         </svg>
@@ -1080,7 +1080,7 @@ export function LandingPage() {
             </div>
             <span className="text-[12px] text-muted-foreground/50">TraceLayer © 2026 </span>
           </div>
-          <span className="text-[11px] text-muted-foreground/40">Built for GDG HackFest 2.0 2026</span>
+          <span className="text-[11px] text-muted-foreground/40">TraceLayer © 2026 • Intelligence-driven requirements</span>
         </div>
       </footer>
 

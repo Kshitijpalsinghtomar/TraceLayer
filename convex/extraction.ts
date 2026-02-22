@@ -226,7 +226,7 @@ Return JSON:
 }
 
 Communication source "${source.name}":
-${source.content.substring(0, 8000)}`;
+${source.content.substring(0, 32000)}`;
 
         const classResult = await callAI(
           apiKey,
@@ -271,9 +271,38 @@ ${source.content.substring(0, 8000)}`;
           status: "extracting",
         });
 
-        const reqPrompt = `${EXTRACTION_SPEC}
+        // ─── Chunk large sources to avoid truncation ──────────────────────
+        const CHUNK_SIZE = 35000;
+        const OVERLAP = 2000;
+        const content = source.content;
+        const chunks: string[] = [];
 
-Extract ALL requirements from this communication. Be EXTREMELY thorough — capture every system capability, constraint, behavior, quality attribute, business rule, integration need, performance expectation, security requirement, and compliance need mentioned.
+        if (content.length <= CHUNK_SIZE) {
+          chunks.push(content);
+        } else {
+          // Split into overlapping chunks so no requirement is lost at a boundary
+          let start = 0;
+          while (start < content.length) {
+            const end = Math.min(start + CHUNK_SIZE, content.length);
+            chunks.push(content.substring(start, end));
+            start = end - OVERLAP;
+            if (start >= content.length - OVERLAP) break; // avoid tiny trailing chunks
+          }
+          await logMsg(
+            "requirement_agent",
+            "info",
+            `📦 Source "${source.name}" is ${(content.length / 1000).toFixed(0)}K chars — splitting into ${chunks.length} chunks for thorough extraction`,
+          );
+        }
+
+        const allChunkReqs: any[] = [];
+
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const chunkLabel = chunks.length > 1 ? ` (chunk ${ci + 1}/${chunks.length})` : "";
+
+          const reqPrompt = `${EXTRACTION_SPEC}
+
+Extract ALL requirements from this communication${chunkLabel}. Be EXTREMELY thorough — capture every system capability, constraint, behavior, quality attribute, business rule, integration need, performance expectation, security requirement, and compliance need mentioned.
 
 Dig deep. Look for:
 - Explicit requirements ("must", "shall", "need")
@@ -302,26 +331,49 @@ Return JSON:
   ]
 }
 
-Source "${source.name}" (type: ${source.type}):
-${source.content.substring(0, 10000)}`;
+Source "${source.name}" (type: ${source.type})${chunkLabel}:
+${chunks[ci]}`;
 
-        const reqResult = await callAI(
-          apiKey,
-          provider,
-          "You are a precision requirements extraction agent. " + SOUL_DOCUMENT.substring(0, 500),
-          reqPrompt
-        );
+          const reqResult = await callAI(
+            apiKey,
+            provider,
+            "You are a precision requirements extraction agent. " + SOUL_DOCUMENT.substring(0, 500),
+            reqPrompt,
+            true,
+            16384
+          );
 
-        const extracted = safeJsonParse(reqResult) as any;
-        const reqs = extracted.requirements || [];
+          const extracted = safeJsonParse(reqResult) as any;
+          const chunkReqs = extracted.requirements || [];
+          allChunkReqs.push(...chunkReqs);
+
+          if (chunks.length > 1) {
+            await logMsg(
+              "requirement_agent",
+              "processing",
+              `  📋 Chunk ${ci + 1}: Found ${chunkReqs.length} requirement(s)`,
+            );
+          }
+        }
+
+        // Deduplicate requirements from overlapping chunks (by title similarity)
+        const seenTitles = new Set<string>();
+        const uniqueReqs: any[] = [];
+        for (const req of allChunkReqs) {
+          const normalizedTitle = (req.title || "").toLowerCase().trim();
+          if (!seenTitles.has(normalizedTitle)) {
+            seenTitles.add(normalizedTitle);
+            uniqueReqs.push(req);
+          }
+        }
 
         await logMsg(
           "requirement_agent",
           "processing",
-          `📋 Found ${reqs.length} requirement(s) in "${source.name}"`,
+          `📋 Found ${uniqueReqs.length} unique requirement(s) in "${source.name}"${chunks.length > 1 ? ` (${allChunkReqs.length} before dedup)` : ""}`,
         );
 
-        for (const req of reqs) {
+        for (const req of uniqueReqs) {
           reqCounter++;
           const reqId = `REQ-${String(reqCounter).padStart(3, "0")}`;
 
@@ -385,7 +437,7 @@ ${source.content.substring(0, 10000)}`;
       const allSourceContent = sources
         .map((s) => `[Source: ${s.name} (${s.type})]\n${s.content}`)
         .join("\n\n---\n\n")
-        .substring(0, 15000);
+        .substring(0, 60000);
 
       const stakeholderPrompt = `Identify ALL stakeholders mentioned across these communications.
 A stakeholder is anyone who proposes, approves, influences, or is affected by requirements.
@@ -420,7 +472,9 @@ ${allSourceContent}`;
         apiKey,
         provider,
         "You are a stakeholder intelligence agent. " + SOUL_DOCUMENT.substring(0, 500),
-        stakeholderPrompt
+        stakeholderPrompt,
+        true,
+        12288
       );
 
       const stakeholderData = safeJsonParse(stakeholderResult) as any;
@@ -434,7 +488,9 @@ ${allSourceContent}`;
           department: sh.department,
           influence: sh.influence || "contributor",
           sentiment: sh.sentiment || "unknown",
-          sourceIds: sources.map((s) => s._id),
+          sourceIds: sources.filter((s) => s.content.toLowerCase().includes((sh.name || "").toLowerCase())).map((s) => s._id).length > 0
+            ? sources.filter((s) => s.content.toLowerCase().includes((sh.name || "").toLowerCase())).map((s) => s._id)
+            : sources.map((s) => s._id),
         });
 
         await logMsg(
@@ -443,16 +499,20 @@ ${allSourceContent}`;
           `  → Identified: ${sh.name} (${sh.role}) — ${sh.influence} — sentiment: ${sh.sentiment || "unknown"}`,
         );
 
-        // Create traceability links
-        await ctx.runMutation(api.traceability.store, {
-          projectId,
-          fromType: "stakeholder",
-          fromId: shId,
-          toType: "source",
-          toId: sources[0]._id,
-          relationship: "mentioned_in",
-          strength: 0.8,
-        });
+        // Create traceability links — link to each source that actually mentions this stakeholder
+        const mentioningSources = sources.filter((s) => s.content.toLowerCase().includes((sh.name || "").toLowerCase()));
+        const linkSources = mentioningSources.length > 0 ? mentioningSources : [sources[0]];
+        for (const linkSource of linkSources) {
+          await ctx.runMutation(api.traceability.store, {
+            projectId,
+            fromType: "stakeholder",
+            fromId: shId,
+            toType: "source",
+            toId: linkSource._id,
+            relationship: "mentioned_in",
+            strength: mentioningSources.length > 0 ? 0.9 : 0.5,
+          });
+        }
       }
 
       await ctx.runMutation(api.pipeline.updateRunStatus, {
@@ -507,7 +567,9 @@ ${allSourceContent}`;
         apiKey,
         provider,
         "You are a decision intelligence agent. " + SOUL_DOCUMENT.substring(0, 500),
-        decisionPrompt
+        decisionPrompt,
+        true,
+        12288
       );
 
       const decisionData = safeJsonParse(decisionResult) as any;
@@ -533,7 +595,15 @@ ${allSourceContent}`;
           description: dec.description || "",
           type: decType,
           status: dec.status || "proposed",
-          sourceId: sources[0]._id,
+          sourceId: (() => {
+            // Try to match decision source_excerpt to actual source content
+            const excerpt = (dec.source_excerpt || "").toLowerCase();
+            if (excerpt.length > 10) {
+              const match = sources.find((s) => s.content.toLowerCase().includes(excerpt.substring(0, 100)));
+              if (match) return match._id;
+            }
+            return sources[0]._id;
+          })(),
           sourceExcerpt: dec.source_excerpt || "",
           confidenceScore: dec.confidence || 0.7,
         });
@@ -544,13 +614,21 @@ ${allSourceContent}`;
           `  → ${decId}: "${dec.title}" [${dec.type}] — ${dec.status}`,
         );
 
-        // Create traceability link
+        // Create traceability link — match to correct source
+        const decSourceId = (() => {
+          const excerpt = (dec.source_excerpt || "").toLowerCase();
+          if (excerpt.length > 10) {
+            const match = sources.find((s) => s.content.toLowerCase().includes(excerpt.substring(0, 100)));
+            if (match) return match._id;
+          }
+          return sources[0]._id;
+        })();
         await ctx.runMutation(api.traceability.store, {
           projectId,
           fromType: "decision",
           fromId: storedDecId,
           toType: "source",
-          toId: sources[0]._id,
+          toId: decSourceId,
           relationship: "decided_in",
           strength: dec.confidence || 0.7,
         });
@@ -715,6 +793,8 @@ If no conflicts found, return { "conflicts": [] }`;
       const stakeholders: any[] = await ctx.runQuery(api.stakeholders.listByProject, { projectId });
       const updatedReqs: any[] = await ctx.runQuery(api.requirements.listByProject, { projectId });
 
+      let linkCount = 0;
+
       for (const req of updatedReqs) {
         for (const sh of stakeholders) {
           // Link if source excerpt mentions stakeholder name
@@ -728,11 +808,109 @@ If no conflicts found, return { "conflicts": [] }`;
               relationship: "proposed_by",
               strength: 0.85,
             });
+            linkCount++;
           }
         }
       }
 
-      await logMsg("traceability_agent", "success", `✅ Traceability graph built — ${updatedReqs.length} requirements × ${stakeholders.length} stakeholders`);
+      // Build decision → requirement links (match by impacted_requirements text or title overlap)
+      const traceDecisions: any[] = await ctx.runQuery(api.decisions.listByProject, { projectId });
+      for (const dec of traceDecisions) {
+        const decDesc = ((dec.description || "") + " " + (dec.title || "")).toLowerCase();
+        for (const req of updatedReqs) {
+          const reqTitle = (req.title || "").toLowerCase();
+          const reqId = (req.requirementId || "").toLowerCase();
+          // Link if the decision description mentions the requirement title or ID
+          if (
+            (reqTitle.length > 5 && decDesc.includes(reqTitle.substring(0, 30))) ||
+            decDesc.includes(reqId)
+          ) {
+            await ctx.runMutation(api.traceability.store, {
+              projectId,
+              fromType: "decision",
+              fromId: dec._id,
+              toType: "requirement",
+              toId: req._id,
+              relationship: "affects",
+              strength: 0.75,
+            });
+            linkCount++;
+          }
+        }
+        // If no requirement link found, link decision to at least one requirement (the first one)
+        if (updatedReqs.length > 0) {
+          const linked = updatedReqs.some((req) => {
+            const reqTitle = (req.title || "").toLowerCase();
+            const reqId = (req.requirementId || "").toLowerCase();
+            return (
+              (reqTitle.length > 5 && decDesc.includes(reqTitle.substring(0, 30))) ||
+              decDesc.includes(reqId)
+            );
+          });
+          if (!linked) {
+            // Link to the most relevant requirement by keyword overlap
+            let bestReq = updatedReqs[0];
+            let bestScore = 0;
+            for (const req of updatedReqs) {
+              const words = (req.title || "").toLowerCase().split(/\s+/);
+              const score = words.filter((w: string) => w.length > 3 && decDesc.includes(w)).length;
+              if (score > bestScore) {
+                bestScore = score;
+                bestReq = req;
+              }
+            }
+            await ctx.runMutation(api.traceability.store, {
+              projectId,
+              fromType: "decision",
+              fromId: dec._id,
+              toType: "requirement",
+              toId: bestReq._id,
+              relationship: "affects",
+              strength: 0.5,
+            });
+            linkCount++;
+          }
+        }
+      }
+
+      // Build conflict → requirement links
+      const conflictsData: any[] = await ctx.runQuery(api.conflicts.listByProject, { projectId });
+      for (const conflict of conflictsData) {
+        // Conflicts already store requirementIds — create traceability links for them
+        const conflictReqIds = conflict.requirementIds || [];
+        for (const reqDbId of conflictReqIds) {
+          await ctx.runMutation(api.traceability.store, {
+            projectId,
+            fromType: "conflict",
+            fromId: conflict._id,
+            toType: "requirement",
+            toId: reqDbId,
+            relationship: "blocks",
+            strength: conflict.severity === "critical" ? 0.95 : conflict.severity === "major" ? 0.8 : 0.6,
+          });
+          linkCount++;
+        }
+      }
+
+      // Build timeline → source links (connect timeline events to the first source)
+      const timelineEvents: any[] = await ctx.runQuery(api.timeline.listByProject, { projectId });
+      for (const evt of timelineEvents) {
+        const evtSourceId = (evt as any).sourceId || (sources.length > 0 ? sources[0]._id : null);
+        if (evtSourceId) {
+          await ctx.runMutation(api.traceability.store, {
+            projectId,
+            fromType: "timeline",
+            fromId: evt._id,
+            toType: "source",
+            toId: evtSourceId,
+            relationship: "mentioned_in",
+            strength: 0.7,
+          });
+          linkCount++;
+        }
+      }
+
+      await logMsg("traceability_agent", "success", `✅ Traceability graph built — ${linkCount} links across ${updatedReqs.length} requirements, ${stakeholders.length} stakeholders, ${traceDecisions.length} decisions, ${conflictsData.length} conflicts, ${timelineEvents.length} timeline events`);
       await ctx.runMutation(api.projects.update, { projectId, progress: 90 });
 
       // ═══════════════════════════════════════════════════════════════════════
@@ -744,8 +922,8 @@ If no conflicts found, return { "conflicts": [] }`;
       });
       await logMsg("document_agent", "processing", "📄 Generating BRD from structured intelligence...");
 
-      const decisions: any[] = await ctx.runQuery(api.decisions.listByProject, { projectId });
-      const conflictsData2: any[] = await ctx.runQuery(api.conflicts.listByProject, { projectId });
+      const brdDecisions: any[] = await ctx.runQuery(api.decisions.listByProject, { projectId });
+      const brdConflicts: any[] = await ctx.runQuery(api.conflicts.listByProject, { projectId });
       const project: any = await ctx.runQuery(api.projects.get, { projectId });
 
       // Build a comprehensive data summary for the BRD generation AI
@@ -753,18 +931,18 @@ If no conflicts found, return { "conflicts": [] }`;
       const channelList = [...new Set(sources.map(s => s.type.replace(/_/g, " ")))].join(", ");
 
       const reqsSummary = updatedReqs.map(r =>
-        `${r.requirementId} [${r.category}/${r.priority}] (confidence: ${(r.confidenceScore * 100).toFixed(0)}%): ${r.title}\n  Description: ${r.description}\n  Source evidence: "${r.sourceExcerpt?.substring(0, 200) || "N/A"}"`
+        `${r.requirementId} [${r.category}/${r.priority}] (confidence: ${(r.confidenceScore * 100).toFixed(0)}%): ${r.title}\n  Description: ${r.description}\n  Source evidence: "${r.sourceExcerpt?.substring(0, 1000) || "N/A"}"\n  Reasoning: ${r.extractionReasoning || "N/A"}`
       ).join("\n\n");
 
       const stakeholdersSummary = stakeholders.map(s =>
         `- ${s.name} (${s.role}${s.department ? `, ${s.department}` : ""}) — Influence: ${s.influence} — Sentiment: ${s.sentiment || "unknown"}`
       ).join("\n");
 
-      const decisionsSummary = decisions.map(d =>
-        `${d.decisionId} [${d.type}/${d.status}]: ${d.title}\n  ${d.description}\n  Evidence: "${d.sourceExcerpt?.substring(0, 200) || "N/A"}"`
+      const decisionsSummary = brdDecisions.map((d: any) =>
+        `${d.decisionId} [${d.type}/${d.status}]: ${d.title}\n  ${d.description}\n  Evidence: "${d.sourceExcerpt?.substring(0, 1000) || "N/A"}"`
       ).join("\n\n");
 
-      const conflictsSummary = conflictsData2.map(c =>
+      const conflictsSummary = brdConflicts.map((c: any) =>
         `${c.conflictId} [${c.severity}]: ${c.title}\n  ${c.description}\n  Resolution: ${c.suggestedResolution || "None proposed"}`
       ).join("\n\n");
 
@@ -790,8 +968,8 @@ If no conflicts found, return { "conflicts": [] }`;
 
       // Include source content snippets for context
       const sourceContentSnippets = sources.map(s =>
-        `--- ${s.name} (${s.type}) ---\n${s.content.substring(0, 3000)}`
-      ).join("\n\n").substring(0, 12000);
+        `--- ${s.name} (${s.type}) ---\n${s.content.substring(0, 15000)}`
+      ).join("\n\n").substring(0, 50000);
 
       const brdPrompt = `${BRD_TEMPLATE}
 
@@ -815,10 +993,10 @@ ${reqsSummary}
 STAKEHOLDERS IDENTIFIED (${stakeholders.length} total):
 ${stakeholdersSummary}
 
-DECISIONS EXTRACTED (${decisions.length} total):
+DECISIONS EXTRACTED (${brdDecisions.length} total):
 ${decisionsSummary || "No decisions identified."}
 
-CONFLICTS DETECTED (${conflictsData2.length} total):
+CONFLICTS DETECTED (${brdConflicts.length} total):
 ${conflictsSummary || "No conflicts detected."}
 
 SOURCE CONTENT (for deeper context):
@@ -827,14 +1005,16 @@ ${sourceContentSnippets}
 ========== END DATA ==========
 
 Now generate the BRD as JSON. CRITICAL RULES:
-1. The executiveSummary MUST be 4-6 detailed paragraphs (800-1500 words). Not a short blurb.
-2. The projectOverview MUST be 2-3 paragraphs explaining the project.
-3. Business objectives must have detailed multi-sentence descriptions.
-4. The scopeDefinition must have detailed lists with explanations.
-5. stakeholderAnalysis, functionalAnalysis, nonFunctionalAnalysis, decisionAnalysis, riskAssessment MUST each be multi-paragraph detailed professional analysis (200-500 words each).
-6. DO NOT just repeat the raw data. SYNTHESIZE, ANALYZE, and WRITE insights.
-7. Reference specific requirement IDs (REQ-001 etc.) and stakeholder names in your analysis.
-8. Be specific and actionable — not generic boilerplate.
+1. The executiveSummary MUST be 4-6 detailed paragraphs (800-1500 words). Not a short blurb. Start with a domain context paragraph.
+2. The projectOverview MUST be 2-3 paragraphs explaining the project, referencing specific topics from the source content.
+3. Business objectives must have 3-5 sentence descriptions with business context and rationale.
+4. The scopeDefinition items must each be a full sentence with explanation, NOT just labels.
+5. stakeholderAnalysis, functionalAnalysis, nonFunctionalAnalysis, decisionAnalysis, riskAssessment MUST each be 300-600 words of substantive professional analysis.
+6. DO NOT just repeat the raw data. SYNTHESIZE, ANALYZE, and WRITE insights. Find patterns, draw connections, and produce analysis that goes BEYOND what's obvious from the data.
+7. ALWAYS cite specific requirement IDs (REQ-001 etc.), stakeholder names, and decision IDs (DEC-001 etc.) inline in your narrative. Every paragraph must reference specific data.
+8. Be specific and actionable — NEVER use generic phrases like "various stakeholders" or "comprehensive solution". Name actual entities.
+9. If you notice duplicate or similar requirements, consolidate them in your analysis and note the convergence as evidence of importance.
+10. Write in active voice. Structure every paragraph with a topic sentence making an analytical claim, followed by supporting evidence.
 
 Return ONLY valid JSON:
 {
@@ -867,8 +1047,8 @@ Return ONLY valid JSON:
     "communicationChannels": [${[...new Set(sources.map(s => `"${s.type}"`))].join(",")}],
     "totalRequirements": ${updatedReqs.length},
     "totalStakeholders": ${stakeholders.length},
-    "totalDecisions": ${decisions.length},
-    "totalConflicts": ${conflictsData2.length},
+    "totalDecisions": ${brdDecisions.length},
+    "totalConflicts": ${brdConflicts.length},
     "overallConfidence": ${avgConfidence.toFixed(2)},
     "categoryBreakdown": "${catBreakdown}",
     "priorityBreakdown": "${priBreakdown}",
@@ -887,10 +1067,20 @@ Return ONLY valid JSON:
       const brdResult = await callAI(
         apiKey,
         provider,
-        "You are an expert business analyst and BRD generation engine. You produce COMPREHENSIVE, DETAILED business requirements documents from structured intelligence data. Your writing is professional, specific, and actionable — never generic or brief. Every section must contain real substance and analysis, not placeholder text. Generate ONLY from the provided extracted intelligence. Never hallucinate data.",
+        `You are a senior business analyst generating an intelligence-driven Business Requirements Document. Your output quality MUST meet these standards:
+
+1. WRITE LIKE A PROFESSIONAL ANALYST presenting to C-level executives. Every sentence must carry substance.
+2. CITE SPECIFIC DATA in every paragraph: requirement IDs (REQ-xxx), stakeholder names, decision IDs (DEC-xxx), and confidence percentages. A paragraph without specific references is a FAILURE.
+3. SYNTHESIZE — don't just list data. Find patterns, identify themes, draw connections between requirements, and surface insights that aren't obvious from reading the raw data.
+4. NEVER use filler phrases like "various stakeholders", "multiple requirements", "comprehensive solution", or "robust system". Always name the actual entities.
+5. Each analysis section MUST be 300-600 words of substantive narrative, not bullet lists.
+6. The executive summary MUST be 800-1500 words (4-6 paragraphs) starting with domain context.
+7. Generate ONLY from the provided extracted intelligence. Never hallucinate data.
+8. If duplicate requirements exist, consolidate them and note the convergence as evidence of importance.
+9. Write in active voice with clear topic sentences followed by supporting evidence.`,
         brdPrompt,
         true,
-        16384
+        32768
       );
 
       await ctx.runMutation(api.documents.store, {
@@ -901,7 +1091,7 @@ Return ONLY valid JSON:
           requirementCount: updatedReqs.length,
           sourceCount: sources.length,
           stakeholderCount: stakeholders.length,
-          decisionCount: decisions.length,
+          decisionCount: brdDecisions.length,
         },
       });
 
@@ -917,7 +1107,7 @@ Return ONLY valid JSON:
         requirementsFound: reqCounter,
         stakeholdersFound: extractedStakeholders.length,
         decisionsFound: decCounter,
-        conflictsFound: conflictsData2.length,
+        conflictsFound: brdConflicts.length,
       });
 
       await ctx.runMutation(api.projects.refreshCounts, { projectId });
@@ -935,7 +1125,7 @@ Return ONLY valid JSON:
         requirements: reqCounter,
         stakeholders: extractedStakeholders.length,
         decisions: decCounter,
-        conflicts: conflictsData2.length,
+        conflicts: brdConflicts.length,
       };
     } catch (error: any) {
       await logMsg("orchestrator", "error", `❌ Pipeline failed: ${error.message}`);

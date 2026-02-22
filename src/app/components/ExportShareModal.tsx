@@ -1,8 +1,12 @@
 ﻿/**
  * ExportShareModal — Real export functionality for BRD documents.
- * Supports PDF (via print), Markdown (text download), and DOCX (XML blob).
+ * Supports PDF (via print), Markdown (text download), DOCX (XML blob),
+ * and shareable website links with view/edit/comment permissions.
  */
 import { useState, useCallback } from "react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
 import {
   Dialog,
   DialogContent,
@@ -17,13 +21,21 @@ import {
   File,
   FileCode,
   Copy,
-  Mail,
   Lock,
   Check,
   Share2,
   Download,
   Loader2,
   CheckCircle2,
+  Link2,
+  Eye,
+  Edit3,
+  MessageSquare,
+  Trash2,
+  Globe,
+  Clock,
+  Shield,
+  XCircle,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -628,6 +640,17 @@ export function ExportShareModal({
   const [exporting, setExporting] = useState<string | null>(null);
   const [exported, setExported] = useState<string | null>(null);
 
+  // ─── Sharing state ──────────────────────────────────────────────────────
+  const [sharePermission, setSharePermission] = useState<"view" | "comment" | "edit">("view");
+  const [shareExpiry, setShareExpiry] = useState<number | undefined>(undefined);
+  const [creatingLink, setCreatingLink] = useState(false);
+  const [linkCopied, setLinkCopied] = useState<string | null>(null);
+
+  const sharedLinks = useQuery(api.sharing.listByProject, { projectId: projectId as Id<"projects"> });
+  const createLink = useMutation(api.sharing.createLink);
+  const revokeLink = useMutation(api.sharing.revokeLink);
+  const deleteLink = useMutation(api.sharing.deleteLink);
+
   const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, "_");
 
   const handleExportPDF = useCallback(() => {
@@ -782,31 +805,183 @@ export function ExportShareModal({
             </div>
           </TabsContent>
 
-          <TabsContent value="share" className="p-6 m-0 space-y-6">
-            <div className="space-y-3">
+          <TabsContent value="share" className="p-6 m-0 space-y-5">
+            {/* ── Generate Share Link ── */}
+            <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <Copy className="w-4 h-4 text-primary" />
-                Copy Full BRD as Text
+                <Link2 className="w-4 h-4 text-primary" />
+                Generate Shareable Link
               </div>
-              <p className="text-[12px] text-muted-foreground leading-relaxed">
-                Copies the entire BRD document in Markdown format to your clipboard. Paste into emails, docs, or messaging apps.
-              </p>
+
+              {/* Permission selector */}
+              <div className="space-y-2">
+                <p className="text-[12px] text-muted-foreground font-medium">Access Level</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { val: "view" as const, icon: Eye, label: "Can View", desc: "Read-only access" },
+                    { val: "comment" as const, icon: MessageSquare, label: "Can Comment", desc: "View + comments" },
+                    { val: "edit" as const, icon: Edit3, label: "Can Edit", desc: "Full editing" },
+                  ]).map((opt) => (
+                    <button
+                      key={opt.val}
+                      onClick={() => setSharePermission(opt.val)}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all text-center ${sharePermission === opt.val
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-border/60 bg-card hover:bg-muted/30"
+                        }`}
+                    >
+                      <opt.icon className={`w-4 h-4 ${sharePermission === opt.val ? "text-primary" : "text-muted-foreground"
+                        }`} />
+                      <div>
+                        <div className={`text-[12px] font-semibold ${sharePermission === opt.val ? "text-primary" : "text-foreground"
+                          }`}>{opt.label}</div>
+                        <div className="text-[10px] text-muted-foreground">{opt.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Expiry selector */}
+              <div className="space-y-2">
+                <p className="text-[12px] text-muted-foreground font-medium">Link Expiry</p>
+                <div className="flex gap-2">
+                  {([
+                    { val: undefined, label: "Never" },
+                    { val: 7, label: "7 days" },
+                    { val: 30, label: "30 days" },
+                    { val: 90, label: "90 days" },
+                  ] as { val: number | undefined; label: string }[]).map((opt) => (
+                    <button
+                      key={opt.label}
+                      onClick={() => setShareExpiry(opt.val)}
+                      className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${shareExpiry === opt.val
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border/60 text-muted-foreground hover:bg-muted/30"
+                        }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generate button */}
               <Button
-                onClick={handleCopy}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl px-6 h-10"
+                disabled={creatingLink}
+                onClick={async () => {
+                  setCreatingLink(true);
+                  try {
+                    const result = await createLink({
+                      projectId: projectId as Id<"projects">,
+                      permission: sharePermission,
+                      expiresInDays: shareExpiry,
+                    });
+                    const url = `${window.location.origin}/shared/${result.token}`;
+                    await navigator.clipboard.writeText(url);
+                    setLinkCopied(result.token);
+                    setTimeout(() => setLinkCopied(null), 3000);
+                  } catch (e) {
+                    console.error("Failed to create link:", e);
+                  } finally {
+                    setCreatingLink(false);
+                  }
+                }}
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl h-10"
               >
-                {copied ? <><Check className="w-4 h-4 mr-2" /> Copied!</> : <><Copy className="w-4 h-4 mr-2" /> Copy to Clipboard</>}
+                {creatingLink ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating…</>
+                ) : linkCopied ? (
+                  <><Check className="w-4 h-4 mr-2" /> Link Copied!</>
+                ) : (
+                  <><Globe className="w-4 h-4 mr-2" /> Generate & Copy Link</>
+                )}
               </Button>
             </div>
 
-            <div className="bg-muted/40 rounded-xl p-4 flex items-start gap-3">
-              <Mail className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-              <div>
-                <p className="text-[13px] font-medium mb-1">Share via Email</p>
-                <p className="text-[12px] text-muted-foreground leading-relaxed">
-                  Download the document using one of the export formats, then attach to your email. Real-time collaboration is coming soon.
+            {/* ── Active Share Links ── */}
+            {sharedLinks && sharedLinks.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[12px] text-muted-foreground font-medium flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5" />
+                  Active Links ({sharedLinks.filter((l) => l.isActive).length})
                 </p>
+                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                  {sharedLinks.filter((l) => l.isActive).map((link) => {
+                    const url = `${window.location.origin}/shared/${link.token}`;
+                    const isExpired = link.expiresAt ? Date.now() > link.expiresAt : false;
+                    const permIcon = link.permission === "edit" ? Edit3 : link.permission === "comment" ? MessageSquare : Eye;
+                    const PermIcon = permIcon;
+                    return (
+                      <div key={link._id} className={`flex items-center gap-3 p-3 rounded-xl border ${isExpired ? "border-red-200 bg-red-50/50" : "border-border/60 bg-card"
+                        }`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${link.permission === "edit" ? "bg-emerald-50 text-emerald-600" :
+                          link.permission === "comment" ? "bg-blue-50 text-blue-600" :
+                            "bg-slate-100 text-slate-600"
+                          }`}>
+                          <PermIcon className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[12px] font-medium text-foreground capitalize">{link.permission}</span>
+                            {isExpired && <span className="text-[10px] text-red-600 font-medium">Expired</span>}
+                            {link.expiresAt && !isExpired && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                <Clock className="w-2.5 h-2.5" />
+                                {new Date(link.expiresAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground truncate">{url}</p>
+                          <p className="text-[10px] text-muted-foreground">{link.accessCount} view{link.accessCount !== 1 ? "s" : ""}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={async () => {
+                              await navigator.clipboard.writeText(url);
+                              setLinkCopied(link.token);
+                              setTimeout(() => setLinkCopied(null), 2000);
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                            title="Copy link"
+                          >
+                            {linkCopied === link.token ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                          </button>
+                          <button
+                            onClick={() => revokeLink({ linkId: link._id })}
+                            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                            title="Revoke link"
+                          >
+                            <XCircle className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
+                          </button>
+                          <button
+                            onClick={() => deleteLink({ linkId: link._id })}
+                            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                            title="Delete link"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+            )}
+
+            {/* ── Copy as Text ── */}
+            <div className="border-t border-border/40 pt-4 space-y-2">
+              <div className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
+                <Copy className="w-3.5 h-3.5" />
+                Or copy full BRD as text
+              </div>
+              <Button
+                onClick={handleCopy}
+                variant="outline"
+                className="rounded-xl px-5 h-9 text-[12px]"
+              >
+                {copied ? <><Check className="w-3.5 h-3.5 mr-1.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5 mr-1.5" /> Copy Markdown</>}
+              </Button>
             </div>
           </TabsContent>
         </Tabs>
