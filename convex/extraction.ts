@@ -30,7 +30,7 @@ const BASE_DELAY_MS = 4000; // 4 seconds base backoff
 
 async function callAI(
   apiKey: string,
-  provider: "openai" | "gemini" | "anthropic",
+  provider: "openai" | "gemini" | "anthropic" | "openrouter",
   systemPrompt: string,
   userPrompt: string,
   jsonMode: boolean = true,
@@ -74,7 +74,7 @@ async function callAI(
 
 async function _callAIOnce(
   apiKey: string,
-  provider: "openai" | "gemini" | "anthropic",
+  provider: "openai" | "gemini" | "anthropic" | "openrouter",
   systemPrompt: string,
   userPrompt: string,
   jsonMode: boolean = true,
@@ -154,6 +154,34 @@ async function _callAIOnce(
     return data.content[0].text;
   }
 
+  if (provider === "openrouter") {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://tracelayer.io",
+        "X-Title": "TraceLayer BRD Generator",
+      },
+      body: JSON.stringify({
+        model: "meta-llama/llama-4-maverick:free",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0,
+        max_tokens: maxTokens,
+        ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenRouter error ${res.status}: ${err}`);
+    }
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || "";
+  }
+
   throw new Error(`Unknown provider: ${provider}`);
 }
 
@@ -189,7 +217,7 @@ function safeJsonParse(text: string): unknown {
 export const runExtractionPipeline = action({
   args: {
     projectId: v.id("projects"),
-    provider: v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic")),
+    provider: v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic"), v.literal("openrouter")),
     apiKey: v.string(),
     regenerate: v.optional(v.boolean()), // If true, clear existing data before running
   },

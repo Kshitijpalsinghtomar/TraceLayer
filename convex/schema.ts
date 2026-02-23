@@ -318,6 +318,7 @@ export default defineSchema({
       v.literal("openai"),
       v.literal("gemini"),
       v.literal("anthropic"),
+      v.literal("openrouter"),
       v.literal("custom")
     ),
     keyHash: v.string(), // hashed, never store raw

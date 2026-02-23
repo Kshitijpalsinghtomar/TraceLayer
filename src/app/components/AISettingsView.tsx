@@ -19,6 +19,7 @@ import {
   Sparkles,
   Zap,
   Lock,
+  Globe,
 } from "lucide-react";
 
 const PROVIDERS = [
@@ -52,6 +53,16 @@ const PROVIDERS = [
     placeholder: "sk-ant-...",
     docsUrl: "https://console.anthropic.com/settings/keys",
   },
+  {
+    id: "openrouter" as const,
+    name: "OpenRouter",
+    icon: Globe,
+    description: "Access free models (Llama 4, DeepSeek, Mistral) — No API credits needed",
+    badge: "✨ Free",
+    badgeColor: "bg-emerald-100 text-emerald-700",
+    placeholder: "sk-or-...",
+    docsUrl: "https://openrouter.ai/keys",
+  },
 ];
 
 export function AISettingsView() {
@@ -82,7 +93,7 @@ export function AISettingsView() {
       </div>
     );
   }
-  const handleSaveKey = async (provider: "openai" | "gemini" | "anthropic") => {
+  const handleSaveKey = async (provider: "openai" | "gemini" | "anthropic" | "openrouter") => {
     const key = newKeys[provider]?.trim();
     if (!key) return;
     setSaving((p) => ({ ...p, [provider]: true }));

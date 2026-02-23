@@ -322,6 +322,7 @@ export function ProjectWorkspace() {
   const storedKeyGemini = useQuery(api.apiKeys.getKeyForProvider, { provider: "gemini" });
   const storedKeyOpenai = useQuery(api.apiKeys.getKeyForProvider, { provider: "openai" });
   const storedKeyAnthropic = useQuery(api.apiKeys.getKeyForProvider, { provider: "anthropic" });
+  const storedKeyOpenrouter = useQuery(api.apiKeys.getKeyForProvider, { provider: "openrouter" });
   const activeKeys = useQuery(api.apiKeys.getActiveKeys);
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -341,9 +342,9 @@ export function ProjectWorkspace() {
   const [showFocusDialog, setShowFocusDialog] = useState(false);
   const [brdFocus, setBrdFocus] = useState(project?.brdFocus || "");
 
-  // Resolve API key for direct pipeline trigger
-  const resolvedApiKey = storedKeyOpenai || storedKeyGemini || storedKeyAnthropic;
-  const resolvedProvider: "openai" | "gemini" | "anthropic" = storedKeyOpenai ? "openai" : storedKeyGemini ? "gemini" : "anthropic";
+  // Resolve API key for direct pipeline trigger — prioritize openrouter (free models)
+  const resolvedApiKey = storedKeyOpenrouter || storedKeyOpenai || storedKeyGemini || storedKeyAnthropic;
+  const resolvedProvider: "openai" | "gemini" | "anthropic" | "openrouter" = storedKeyOpenrouter ? "openrouter" : storedKeyOpenai ? "openai" : storedKeyGemini ? "gemini" : "anthropic";
   const hasApiKey = !!resolvedApiKey;
 
   const handleGenerateBRD = () => {

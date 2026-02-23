@@ -8,6 +8,7 @@ export const storeKey = mutation({
       v.literal("openai"),
       v.literal("gemini"),
       v.literal("anthropic"),
+      v.literal("openrouter"),
       v.literal("custom")
     ),
     key: v.string(),
@@ -63,7 +64,7 @@ export const deleteKey = mutation({
 
 // ─── Get raw key for AI calls (internal use) ─────────────────────────────────
 export const getKeyForProvider = query({
-  args: { provider: v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic"), v.literal("custom")) },
+  args: { provider: v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic"), v.literal("openrouter"), v.literal("custom")) },
   handler: async (ctx, args) => {
     const keys = await ctx.db.query("apiKeys").collect();
     const active = keys.find((k) => k.provider === args.provider && k.isActive);
