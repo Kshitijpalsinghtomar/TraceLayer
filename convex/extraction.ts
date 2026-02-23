@@ -5,8 +5,74 @@ import { action } from "./_generated/server";
 import { api } from "./_generated/api";
 import { SOUL_DOCUMENT, EXTRACTION_SPEC, BRD_TEMPLATE } from "./agentKnowledge";
 
-// ─── Helper: Call AI Provider ────────────────────────────────────────────────
+// ─── Helper: Sleep for ms ────────────────────────────────────────────────────
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ─── Helper: Extract retry delay from rate-limit error messages ──────────────
+function parseRetryDelay(errorBody: any): number | null {
+  try {
+    const msg = errorBody?.error?.message || JSON.stringify(errorBody);
+    // OpenAI: "Please try again in 3.562s"
+    const match = msg.match(/try again in (\d+(?:\.\d+)?)s/i);
+    if (match) return Math.ceil(parseFloat(match[1]) * 1000);
+    // Anthropic: "retry after X seconds"
+    const match2 = msg.match(/retry after (\d+)/i);
+    if (match2) return parseInt(match2[1]) * 1000;
+  } catch { /* ignore */ }
+  return null;
+}
+
+// ─── Helper: Call AI Provider (with rate-limit retry) ────────────────────────
+const MAX_RETRIES = 5;
+const BASE_DELAY_MS = 4000; // 4 seconds base backoff
+
 async function callAI(
+  apiKey: string,
+  provider: "openai" | "gemini" | "anthropic",
+  systemPrompt: string,
+  userPrompt: string,
+  jsonMode: boolean = true,
+  maxTokens: number = 8192
+): Promise<string> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const result = await _callAIOnce(apiKey, provider, systemPrompt, userPrompt, jsonMode, maxTokens);
+      return result;
+    } catch (err: any) {
+      const errMsg = err?.message || "";
+      const isRateLimit =
+        errMsg.includes("rate_limit") ||
+        errMsg.includes("Rate limit") ||
+        errMsg.includes("429") ||
+        errMsg.includes("Too Many Requests") ||
+        errMsg.includes("quota") ||
+        errMsg.includes("RESOURCE_EXHAUSTED");
+
+      if (isRateLimit && attempt < MAX_RETRIES) {
+        // Try to parse the suggested wait time from the error
+        let waitMs: number;
+        try {
+          const errorJson = JSON.parse(errMsg.replace(/^[^{]*/, ""));
+          const parsed = parseRetryDelay(errorJson);
+          waitMs = parsed || BASE_DELAY_MS * Math.pow(2, attempt);
+        } catch {
+          waitMs = BASE_DELAY_MS * Math.pow(2, attempt);
+        }
+        // Add jitter (±20%)
+        waitMs = waitMs * (0.8 + Math.random() * 0.4);
+        console.log(`[callAI] Rate limited (attempt ${attempt + 1}/${MAX_RETRIES}). Waiting ${(waitMs / 1000).toFixed(1)}s before retry...`);
+        await sleep(waitMs);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("callAI: Exhausted all retries");
+}
+
+async function _callAIOnce(
   apiKey: string,
   provider: "openai" | "gemini" | "anthropic",
   systemPrompt: string,
