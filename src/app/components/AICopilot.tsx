@@ -8,7 +8,7 @@
  * - Context-aware: knows which page you're on, which project
  * - In-memory chat state (no database persistence for global chat)
  * - Keyboard shortcut: Ctrl+J to toggle
- * - Multi-provider support (Gemini/OpenAI/Anthropic)
+ * - Provider/model managed centrally by admin
  * - Quick actions for common tasks
  * - Animated transitions and professional UI
  *
@@ -34,15 +34,12 @@ import {
   RotateCcw,
   Maximize2,
   Minimize2,
-  ChevronDown,
   ArrowRight,
   Zap,
   FileText,
   Users,
   Network,
   BarChart3,
-  HelpCircle,
-  MessageSquare,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -189,20 +186,18 @@ function CopilotMessageBubble({ message }: { message: CopilotMessage }) {
       className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}
     >
       {/* Avatar */}
-      <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${
-        isUser
+      <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${isUser
           ? "bg-primary/15 text-primary"
           : "bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm"
-      }`}>
+        }`}>
         {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
       </div>
 
       {/* Bubble */}
-      <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[12.5px] leading-relaxed ${
-        isUser
+      <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[12.5px] leading-relaxed ${isUser
           ? "bg-primary text-primary-foreground ml-auto rounded-tr-md"
           : "bg-muted/60 text-foreground border border-border/40 rounded-tl-md"
-      }`}>
+        }`}>
         {isUser ? (
           <p>{message.content}</p>
         ) : (
@@ -226,32 +221,14 @@ export function AICopilot() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [provider, setProvider] = useState<"openai" | "gemini" | "anthropic">("gemini");
-  const [showProviderPicker, setShowProviderPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Query stored API keys
-  const storedKeyGemini = useQuery(api.apiKeys.getKeyForProvider, { provider: "gemini" });
-  const storedKeyOpenai = useQuery(api.apiKeys.getKeyForProvider, { provider: "openai" });
-  const storedKeyAnthropic = useQuery(api.apiKeys.getKeyForProvider, { provider: "anthropic" });
-
+  // Query centralized AI config (no more per-provider key queries)
+  const aiConfig = useQuery(api.aiConfig.getAIConfig);
   const copilotAction = useAction(api.copilot.globalChat);
 
-  // Auto-select provider with available key
-  useEffect(() => {
-    if (storedKeyGemini) setProvider("gemini");
-    else if (storedKeyOpenai) setProvider("openai");
-    else if (storedKeyAnthropic) setProvider("anthropic");
-  }, [storedKeyGemini, storedKeyOpenai, storedKeyAnthropic]);
-
-  // Get API key for current provider
-  const getApiKey = useCallback((): string | null => {
-    if (provider === "gemini") return storedKeyGemini || null;
-    if (provider === "openai") return storedKeyOpenai || null;
-    if (provider === "anthropic") return storedKeyAnthropic || null;
-    return null;
-  }, [provider, storedKeyGemini, storedKeyOpenai, storedKeyAnthropic]);
+  const hasAI = !!aiConfig?.configured;
 
   // Keyboard shortcut: Ctrl+J
   useEffect(() => {
@@ -289,9 +266,8 @@ export function AICopilot() {
     const content = messageContent || input.trim();
     if (!content || sending) return;
 
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      setError("No API key configured. Go to Settings → API Keys to add one.");
+    if (!hasAI) {
+      setError("No AI provider configured. Ask your admin to set up an API key in the Admin Panel.");
       return;
     }
 
@@ -310,8 +286,6 @@ export function AICopilot() {
     try {
       const result = await copilotAction({
         userMessage: content,
-        provider,
-        apiKey,
         context: {
           currentPage: getPageContext(location.pathname),
           activeProjectId,
@@ -350,11 +324,9 @@ export function AICopilot() {
     setError(null);
   };
 
-  const providerInfo = {
-    gemini: { label: "Gemini", color: "#4285F4", hasKey: !!storedKeyGemini },
-    openai: { label: "GPT-4o", color: "#10A37F", hasKey: !!storedKeyOpenai },
-    anthropic: { label: "Claude", color: "#CC785C", hasKey: !!storedKeyAnthropic },
-  };
+  const providerLabel = aiConfig?.configured
+    ? `${aiConfig.provider === "openrouter" ? "OpenRouter" : aiConfig.provider === "openai" ? "OpenAI" : aiConfig.provider === "gemini" ? "Gemini" : "Claude"}`
+    : "Not configured";
 
   const panelWidth = isExpanded ? "w-[560px]" : "w-[420px]";
 
@@ -417,7 +389,7 @@ export function AICopilot() {
                       <Sparkles className="w-3.5 h-3.5 text-violet-500" />
                     </h2>
                     <p className="text-[11px] text-muted-foreground">
-                      {getPageContext(location.pathname)} • {providerInfo[provider].label}
+                      {getPageContext(location.pathname)} • {providerLabel}
                     </p>
                   </div>
                 </div>
@@ -447,25 +419,12 @@ export function AICopilot() {
                 </div>
               </div>
 
-              {/* Provider Picker */}
+              {/* Provider indicator (read-only) + shortcut */}
               <div className="mt-3 flex items-center gap-2">
-                {(Object.entries(providerInfo) as [string, any][]).map(([key, info]) => (
-                  <button
-                    key={key}
-                    onClick={() => info.hasKey && setProvider(key as any)}
-                    className={`text-[11px] px-2.5 py-1 rounded-full border transition-all ${
-                      provider === key
-                        ? "border-primary/40 bg-primary/10 text-primary font-medium"
-                        : info.hasKey
-                          ? "border-border/40 text-muted-foreground hover:border-border hover:text-foreground"
-                          : "border-border/20 text-muted-foreground/40 cursor-not-allowed"
-                    }`}
-                    disabled={!info.hasKey}
-                  >
-                    {info.label}
-                    {!info.hasKey && " ✗"}
-                  </button>
-                ))}
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border/40 text-[11px] text-muted-foreground">
+                  <div className={`w-2 h-2 rounded-full ${hasAI ? "bg-emerald-500" : "bg-amber-500"}`} />
+                  {hasAI ? `Using ${providerLabel}` : "No AI configured"}
+                </div>
                 <span className="text-[10px] text-muted-foreground/50 ml-auto">
                   <Keyboard className="w-3 h-3 inline mr-1" />Ctrl+J
                 </span>
@@ -504,8 +463,8 @@ export function AICopilot() {
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: 0.1 + i * 0.06 }}
                           onClick={() => handleSend(s.prompt)}
-                          disabled={sending}
-                          className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-border/40 hover:border-primary/30 hover:bg-primary/5 text-left transition-all group"
+                          disabled={sending || !hasAI}
+                          className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-border/40 hover:border-primary/30 hover:bg-primary/5 text-left transition-all group disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/15">
                             <s.icon className="w-3.5 h-3.5 text-primary" />
@@ -592,15 +551,15 @@ export function AICopilot() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask anything about your projects..."
+                  placeholder={hasAI ? "Ask anything about your projects..." : "AI not configured — ask admin to set up"}
                   rows={1}
                   className="flex-1 bg-transparent text-[13px] placeholder:text-muted-foreground/50 resize-none outline-none min-h-[24px] max-h-[120px]"
                   style={{ fieldSizing: "content" } as any}
-                  disabled={sending}
+                  disabled={sending || !hasAI}
                 />
                 <button
                   onClick={() => handleSend()}
-                  disabled={!input.trim() || sending}
+                  disabled={!input.trim() || sending || !hasAI}
                   className="shrink-0 w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
                 >
                   {sending ? (
@@ -611,7 +570,7 @@ export function AICopilot() {
                 </button>
               </div>
               <p className="text-[10px] text-muted-foreground/40 text-center mt-2">
-                Powered by TraceLayer AI • {providerInfo[provider].label} • Press Enter to send
+                Powered by TraceLayer AI • {providerLabel} • Press Enter to send
               </p>
             </div>
           </motion.div>

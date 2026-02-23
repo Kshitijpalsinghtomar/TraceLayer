@@ -319,11 +319,7 @@ export function ProjectWorkspace() {
   const uploadSource = useMutation(api.sources.upload);
   const updateProject = useMutation(api.projects.update);
   const runPipeline = useAction(api.extraction.runExtractionPipeline);
-  const storedKeyGemini = useQuery(api.apiKeys.getKeyForProvider, { provider: "gemini" });
-  const storedKeyOpenai = useQuery(api.apiKeys.getKeyForProvider, { provider: "openai" });
-  const storedKeyAnthropic = useQuery(api.apiKeys.getKeyForProvider, { provider: "anthropic" });
-  const storedKeyOpenrouter = useQuery(api.apiKeys.getKeyForProvider, { provider: "openrouter" });
-  const activeKeys = useQuery(api.apiKeys.getActiveKeys);
+  const aiConfig = useQuery(api.aiConfig.getAIConfig);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const validTabs: WorkspaceTab[] = ["resources", "brd", "chat"];
@@ -342,18 +338,16 @@ export function ProjectWorkspace() {
   const [showFocusDialog, setShowFocusDialog] = useState(false);
   const [brdFocus, setBrdFocus] = useState(project?.brdFocus || "");
 
-  // Resolve API key for direct pipeline trigger — prioritize openrouter (free models)
-  const resolvedApiKey = storedKeyOpenrouter || storedKeyOpenai || storedKeyGemini || storedKeyAnthropic;
-  const resolvedProvider: "openai" | "gemini" | "anthropic" | "openrouter" = storedKeyOpenrouter ? "openrouter" : storedKeyOpenai ? "openai" : storedKeyGemini ? "gemini" : "anthropic";
-  const hasApiKey = !!resolvedApiKey;
+  // AI config is managed centrally by admin
+  const hasApiKey = !!aiConfig?.configured;
 
   const handleGenerateBRD = () => {
-    if (!resolvedApiKey || generatingBRD) return;
+    if (!hasApiKey || generatingBRD) return;
     setShowFocusDialog(true);
   };
 
   const launchPipeline = async (focus: string) => {
-    if (!resolvedApiKey || generatingBRD) return;
+    if (!hasApiKey || generatingBRD) return;
     setShowFocusDialog(false);
     setGeneratingBRD(true);
     setGenerateError(null);
@@ -372,8 +366,6 @@ export function ProjectWorkspace() {
       }
       await runPipeline({
         projectId: projectId as Id<"projects">,
-        provider: resolvedProvider,
-        apiKey: resolvedApiKey,
       });
       setActiveTab("brd");
     } catch (e: any) {

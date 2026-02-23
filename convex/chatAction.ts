@@ -13,21 +13,36 @@ import { api } from "./_generated/api";
  * - Current BRD content
  * - Chat history
  *
- * The AI can then reason over the actual data, not just metadata.
+ * Provider and API key are resolved from centralized admin config.
  */
 export const chat = action({
   args: {
     projectId: v.id("projects"),
     userMessage: v.string(),
-    provider: v.union(
-      v.literal("openai"),
-      v.literal("gemini"),
-      v.literal("anthropic")
-    ),
-    apiKey: v.string(),
   },
   handler: async (ctx, args): Promise<any> => {
-    const { projectId, userMessage, provider, apiKey } = args;
+    const { projectId, userMessage } = args;
+
+    // ─── Resolve AI config from admin settings ───────────────────────────
+    const aiConfig = await ctx.runQuery(api.aiConfig.getAIConfig);
+    if (!aiConfig?.configured) {
+      throw new Error("No AI provider configured. Ask your admin to set up an API key in the Admin Panel.");
+    }
+
+    // Get the full config (with API key) server-side
+    const settings = await ctx.runQuery(api.settings.getAll);
+    const defaultProvider = settings["default_provider"] || aiConfig.provider;
+
+    // Get the API key for the chosen provider
+    const apiKey = await ctx.runQuery(api.apiKeys.getKeyForProvider, {
+      provider: defaultProvider as any,
+    });
+    if (!apiKey) {
+      throw new Error(`No API key found for provider "${defaultProvider}". Configure one in the Admin Panel.`);
+    }
+
+    const provider = defaultProvider as "openai" | "gemini" | "anthropic" | "openrouter";
+    const model = aiConfig.model;
 
     // Store user message
     await ctx.runMutation(api.chat.sendMessage, {
@@ -203,7 +218,7 @@ ${contextParts.filter(Boolean).join("\n")}
 ${recentHistory}`;
 
     // ─── Call AI ─────────────────────────────────────────────────────────
-    const aiResponse = await callAIChat(apiKey, provider, systemPrompt, userMessage);
+    const aiResponse = await callAIChat(apiKey, provider, model, systemPrompt, userMessage);
 
     // Store assistant response
     await ctx.runMutation(api.chat.sendMessage, {
@@ -220,7 +235,8 @@ ${recentHistory}`;
 // ─── AI Provider Calls ───────────────────────────────────────────────────────
 async function callAIChat(
   apiKey: string,
-  provider: "openai" | "gemini" | "anthropic",
+  provider: "openai" | "gemini" | "anthropic" | "openrouter",
+  model: string,
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
@@ -232,7 +248,7 @@ async function callAIChat(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -251,7 +267,7 @@ async function callAIChat(
 
   if (provider === "gemini") {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -280,7 +296,7 @@ async function callAIChat(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model,
         max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
@@ -292,6 +308,33 @@ async function callAIChat(
         data.error?.message || `Anthropic error: ${res.status}`
       );
     return data.content[0].text;
+  }
+
+  if (provider === "openrouter") {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://tracelayer.io",
+        "X-Title": "TraceLayer BRD Generator",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.4,
+        max_tokens: 4096,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenRouter error ${res.status}: ${err}`);
+    }
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || "";
   }
 
   throw new Error(`Unknown provider: ${provider}`);

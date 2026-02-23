@@ -115,6 +115,7 @@ export function AgentPipelineView() {
     projectId ? { projectId: projectId as Id<"projects"> } : "skip"
   );
   const activeKeys = useQuery(api.apiKeys.getActiveKeys);
+  const aiConfig = useQuery(api.aiConfig.getAIConfig);
   const connectedIntegrations = useQuery(api.integrations.listConnected);
   const sources = useQuery(
     api.sources.listByProject,
@@ -139,12 +140,9 @@ export function AgentPipelineView() {
   );
 
   // ─── Local State ─────────────────────────────────────────────────────────
-  const [apiKey, setApiKey] = useState("");
-  const [provider, setProvider] = useState<"openai" | "gemini" | "anthropic">("gemini");
   const [isRunning, setIsRunning] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [usingStoredKey, setUsingStoredKey] = useState(false);
   const [regenerateMode, setRegenerateMode] = useState(false);
   const [syncWithIntegrations, setSyncWithIntegrations] = useState(true);
   const [showDiagnostics, setShowDiagnostics] = useState(true);
@@ -153,25 +151,7 @@ export function AgentPipelineView() {
   const [testResults, setTestResults] = useState<Record<string, "pass" | "fail" | "running"> | null>(null);
   const [isRunningTests, setIsRunningTests] = useState(false);
 
-  // Auto-load stored API key for selected provider
-  const storedKey = useQuery(api.apiKeys.getKeyForProvider, { provider });
-
-  useEffect(() => {
-    if (storedKey && !apiKey) {
-      setApiKey(storedKey);
-      setUsingStoredKey(true);
-    }
-  }, [storedKey, provider]);
-
-  useEffect(() => {
-    if (storedKey) {
-      setApiKey(storedKey);
-      setUsingStoredKey(true);
-    } else {
-      setApiKey("");
-      setUsingStoredKey(false);
-    }
-  }, [provider, storedKey]);
+  const hasAI = !!aiConfig?.configured;
 
   // Auto-scroll terminal
   useEffect(() => {
@@ -208,21 +188,17 @@ export function AgentPipelineView() {
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
   const handleStartPipeline = useCallback(async () => {
-    if (!apiKey || !projectId) return;
+    if (!hasAI || !projectId) return;
     setIsRunning(true);
     try {
       if (syncWithIntegrations && connectedCount > 0) {
         await syncAndRun({
           projectId: projectId as Id<"projects">,
-          provider,
-          apiKey,
           regenerate: regenerateMode,
         });
       } else {
         await runPipeline({
           projectId: projectId as Id<"projects">,
-          provider,
-          apiKey,
           regenerate: regenerateMode,
         });
       }
@@ -231,7 +207,7 @@ export function AgentPipelineView() {
     } finally {
       setIsRunning(false);
     }
-  }, [apiKey, projectId, provider, syncWithIntegrations, connectedCount, regenerateMode, syncAndRun, runPipeline]);
+  }, [hasAI, projectId, syncWithIntegrations, connectedCount, regenerateMode, syncAndRun, runPipeline]);
 
   const handleCancel = useCallback(async () => {
     if (!projectId) return;
@@ -287,7 +263,7 @@ export function AgentPipelineView() {
       setTestResults((prev) => ({ ...prev, [test.key]: "running" as const }));
       await new Promise((r) => setTimeout(r, 500));
       let result: "pass" | "fail" = "pass";
-      if (test.key === "apiKey") result = apiKey ? "pass" : "fail";
+      if (test.key === "apiKey") result = hasAI ? "pass" : "fail";
       else if (test.key === "sources") result = sourceCount > 0 ? "pass" : "fail";
       else if (test.key === "integrations") result = connectedCount > 0 || sourceCount > 0 ? "pass" : "fail";
       else if (test.key === "project") result = project ? "pass" : "fail";
@@ -295,7 +271,7 @@ export function AgentPipelineView() {
       setTestResults((prev) => ({ ...prev, [test.key]: result }));
     }
     setIsRunningTests(false);
-  }, [apiKey, sourceCount, connectedCount, project, diagnostics]);
+  }, [hasAI, sourceCount, connectedCount, project, diagnostics]);
 
   if (!projectId) return null;
 
@@ -424,17 +400,16 @@ export function AgentPipelineView() {
                 </div>
               )}
               <span
-                className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                  latestRun?.status === "completed"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : latestRun?.status === "failed"
+                className={`text-xs px-2.5 py-1 rounded-full font-medium ${latestRun?.status === "completed"
+                  ? "bg-emerald-100 text-emerald-700"
+                  : latestRun?.status === "failed"
                     ? "bg-red-100 text-red-700"
                     : latestRun?.status === "cancelled"
-                    ? "bg-amber-100 text-amber-700"
-                    : isRunning
-                    ? "bg-blue-100 text-blue-700"
-                    : "bg-muted text-muted-foreground"
-                }`}
+                      ? "bg-amber-100 text-amber-700"
+                      : isRunning
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-muted text-muted-foreground"
+                  }`}
               >
                 {latestRun?.status ? latestRun.status.replace(/_/g, " ") : "Ready"}
               </span>
@@ -493,15 +468,14 @@ export function AgentPipelineView() {
               <div key={stage.key} className="flex items-center flex-1">
                 <div className="flex flex-col items-center flex-1">
                   <div
-                    className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                      isDone
-                        ? "bg-emerald-100 text-emerald-700"
-                        : isFailed
+                    className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${isDone
+                      ? "bg-emerald-100 text-emerald-700"
+                      : isFailed
                         ? "bg-red-100 text-red-600"
                         : isCurrent
-                        ? "ring-2 ring-offset-2"
-                        : "bg-muted/50 text-muted-foreground/40"
-                    }`}
+                          ? "ring-2 ring-offset-2"
+                          : "bg-muted/50 text-muted-foreground/40"
+                      }`}
                     style={
                       isCurrent
                         ? { outlineColor: agentColor, backgroundColor: `${agentColor}15`, color: agentColor } as React.CSSProperties
@@ -523,9 +497,8 @@ export function AgentPipelineView() {
                     )}
                   </div>
                   <span
-                    className={`text-[10px] mt-2 text-center font-medium ${
-                      isDone || isCurrent ? "text-foreground" : "text-muted-foreground/40"
-                    }`}
+                    className={`text-[10px] mt-2 text-center font-medium ${isDone || isCurrent ? "text-foreground" : "text-muted-foreground/40"
+                      }`}
                   >
                     {stage.label}
                   </span>
@@ -652,72 +625,25 @@ export function AgentPipelineView() {
               <h3 className="text-[14px] font-semibold">AI Provider</h3>
             </div>
 
-            <div className="space-y-2 mb-5">
-              {([
-                { id: "gemini", label: "Google Gemini", desc: "Free tier available", color: "#6366F1" },
-                { id: "openai", label: "OpenAI GPT-4", desc: "GPT-4o model", color: "#10B981" },
-                { id: "anthropic", label: "Anthropic Claude", desc: "Claude 3.5 Sonnet", color: "#F59E0B" },
-              ] as const).map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setProvider(p.id as "openai" | "gemini" | "anthropic")}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] border transition-all duration-200 ${
-                    provider === p.id
-                      ? "border-2"
-                      : "border-border/50 hover:border-muted-foreground/30"
-                  }`}
-                  style={
-                    provider === p.id
-                      ? { borderColor: p.color, backgroundColor: `${p.color}08` }
-                      : {}
-                  }
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold" style={{ color: provider === p.id ? p.color : "inherit" }}>
-                      {p.label}
-                    </span>
-                    {provider === p.id && (
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-                    )}
-                  </div>
-                  <span className="text-[11px] text-muted-foreground">{p.desc}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="mb-4">
-              <label className="text-[12px] font-medium text-muted-foreground mb-2 block">
-                <KeyRound className="w-3.5 h-3.5 inline mr-1.5" />
-                API Key
-              </label>
-              {usingStoredKey ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 px-3 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50/80 text-[12px] text-emerald-700 flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span className="truncate">Using saved {provider} key</span>
-                  </div>
-                  <button
-                    onClick={() => { setUsingStoredKey(false); setApiKey(""); }}
-                    className="text-[11px] text-muted-foreground hover:text-foreground px-3 py-2 rounded-xl border border-border hover:bg-muted/50 transition-colors"
-                  >
-                    Change
-                  </button>
-                </div>
+            <div className={`py-3 px-4 rounded-xl border text-[12px] flex items-center gap-2 mb-4 ${hasAI
+              ? "border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400"
+              : "border-amber-200 bg-amber-50/80 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400"
+              }`}>
+              {hasAI ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{aiConfig?.provider} — {aiConfig?.model}</span>
+                </>
               ) : (
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={`Enter ${provider} API key...`}
-                  className="w-full px-3 py-2.5 rounded-xl border border-border/50 bg-background/50 text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
-                />
+                <>
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>No AI configured — ask admin</span>
+                </>
               )}
-              <p className="text-[10px] text-muted-foreground mt-2">
-                {usingStoredKey
-                  ? "Loaded from your saved keys in AI Settings"
-                  : "Or save permanently in Settings > AI Settings"}
-              </p>
             </div>
+            <p className="text-[11px] text-muted-foreground mb-4">
+              AI provider is managed centrally by your admin.
+            </p>
 
             {/* Options */}
             <div className="space-y-2 mb-4">
@@ -734,15 +660,13 @@ export function AgentPipelineView() {
                   <button
                     type="button"
                     onClick={() => setSyncWithIntegrations(!syncWithIntegrations)}
-                    className={`relative rounded-full transition-colors ${
-                      syncWithIntegrations ? "bg-primary" : "bg-muted-foreground/30"
-                    }`}
+                    className={`relative rounded-full transition-colors ${syncWithIntegrations ? "bg-primary" : "bg-muted-foreground/30"
+                      }`}
                     style={{ width: "2rem", height: "1.125rem" }}
                   >
                     <span
-                      className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${
-                        syncWithIntegrations ? "translate-x-3.5" : "translate-x-0"
-                      }`}
+                      className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${syncWithIntegrations ? "translate-x-3.5" : "translate-x-0"
+                        }`}
                     />
                   </button>
                 </label>
@@ -758,15 +682,13 @@ export function AgentPipelineView() {
                   <button
                     type="button"
                     onClick={() => setRegenerateMode(!regenerateMode)}
-                    className={`relative rounded-full transition-colors ${
-                      regenerateMode ? "bg-amber-500" : "bg-muted-foreground/30"
-                    }`}
+                    className={`relative rounded-full transition-colors ${regenerateMode ? "bg-amber-500" : "bg-muted-foreground/30"
+                      }`}
                     style={{ width: "2rem", height: "1.125rem" }}
                   >
                     <span
-                      className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${
-                        regenerateMode ? "translate-x-3.5" : "translate-x-0"
-                      }`}
+                      className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${regenerateMode ? "translate-x-3.5" : "translate-x-0"
+                        }`}
                     />
                   </button>
                 </label>
@@ -776,12 +698,11 @@ export function AgentPipelineView() {
             {/* Start / Retry button */}
             <button
               onClick={handleStartPipeline}
-              disabled={!apiKey || isRunning}
-              className={`w-full py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-all duration-200 ${
-                !apiKey || isRunning
-                  ? "bg-muted text-muted-foreground cursor-not-allowed"
-                  : "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/25"
-              }`}
+              disabled={!hasAI || isRunning}
+              className={`w-full py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-all duration-200 ${!hasAI || isRunning
+                ? "bg-muted text-muted-foreground cursor-not-allowed"
+                : "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/25"
+                }`}
             >
               {isRunning ? (
                 <>
@@ -879,15 +800,14 @@ export function AgentPipelineView() {
                       >
                         <div className="flex items-center gap-2">
                           <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              run.status === "completed"
-                                ? "bg-emerald-500"
-                                : run.status === "failed"
+                            className={`w-1.5 h-1.5 rounded-full ${run.status === "completed"
+                              ? "bg-emerald-500"
+                              : run.status === "failed"
                                 ? "bg-red-500"
                                 : run.status === "cancelled"
-                                ? "bg-amber-500"
-                                : "bg-blue-500"
-                            }`}
+                                  ? "bg-amber-500"
+                                  : "bg-blue-500"
+                              }`}
                           />
                           <span className="text-muted-foreground">
                             {run.status.replace(/_/g, " ")}
@@ -1075,10 +995,9 @@ export function AgentPipelineView() {
                       })}
                       {!isRunningTests && Object.keys(testResults).length === 5 && (
                         <div className="text-center pt-2">
-                          <span className={`text-[12px] font-semibold ${
-                            Object.values(testResults).every((v) => v === "pass")
-                              ? "text-emerald-600" : "text-amber-600"
-                          }`}>
+                          <span className={`text-[12px] font-semibold ${Object.values(testResults).every((v) => v === "pass")
+                            ? "text-emerald-600" : "text-amber-600"
+                            }`}>
                             {Object.values(testResults).filter((v) => v === "pass").length}/5 tests passed
                           </span>
                         </div>

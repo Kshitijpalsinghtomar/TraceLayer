@@ -14,18 +14,12 @@ import { api } from "./_generated/api";
  * intelligence: answering questions about any project, providing
  * guidance on the platform, and offering proactive recommendations.
  *
- * Chat state is managed in-memory on the frontend (no persistence).
+ * Provider and API key are resolved from centralized admin config.
  */
 
 export const globalChat = action({
   args: {
     userMessage: v.string(),
-    provider: v.union(
-      v.literal("openai"),
-      v.literal("gemini"),
-      v.literal("anthropic")
-    ),
-    apiKey: v.string(),
     context: v.optional(
       v.object({
         currentPage: v.optional(v.string()),
@@ -38,7 +32,26 @@ export const globalChat = action({
     ),
   },
   handler: async (ctx, args): Promise<{ response: string }> => {
-    const { userMessage, provider, apiKey, context } = args;
+    const { userMessage, context } = args;
+
+    // ─── Resolve AI config from admin settings ───────────────────────────
+    const aiConfig = await ctx.runQuery(api.aiConfig.getAIConfig);
+    if (!aiConfig?.configured) {
+      throw new Error("No AI provider configured. Ask your admin to set up an API key in the Admin Panel.");
+    }
+
+    const settings = await ctx.runQuery(api.settings.getAll);
+    const defaultProvider = settings["default_provider"] || aiConfig.provider;
+
+    const apiKey = await ctx.runQuery(api.apiKeys.getKeyForProvider, {
+      provider: defaultProvider as any,
+    });
+    if (!apiKey) {
+      throw new Error(`No API key found for provider "${defaultProvider}". Configure one in the Admin Panel.`);
+    }
+
+    const provider = defaultProvider as "openai" | "gemini" | "anthropic" | "openrouter";
+    const model = aiConfig.model;
 
     // ─── Gather cross-project context ─────────────────────────────────
     const projects: any[] = await ctx.runQuery(api.projects.list);
@@ -60,7 +73,6 @@ export const globalChat = action({
     let activeProjectContext = "";
     if (context?.activeProjectId) {
       try {
-        const projectId = context.activeProjectId as any;
         const proj = projects.find((p: any) => p._id === context.activeProjectId);
         if (proj) {
           activeProjectContext = `
@@ -114,8 +126,8 @@ ${stats ? `Total across all projects: ${stats.totalProjects || 0} projects, ${st
 
 ## Projects
 ${projectOverviews.length > 0
-  ? projectOverviews.map(p => `- **${p.name}** (${p.status}): ${p.sources} sources, ${p.requirements} reqs, ${p.stakeholders} stakeholders${p.conflicts > 0 ? `, ⚠️ ${p.conflicts} conflicts` : ""}`).join("\n")
-  : "No projects yet"}
+        ? projectOverviews.map(p => `- **${p.name}** (${p.status}): ${p.sources} sources, ${p.requirements} reqs, ${p.stakeholders} stakeholders${p.conflicts > 0 ? `, ⚠️ ${p.conflicts} conflicts` : ""}`).join("\n")
+        : "No projects yet"}
 ${activeProjectContext}
 
 ${pageContext}
@@ -135,7 +147,7 @@ ${pageContext}
 ${historyStr}`;
 
     // ─── Call AI ──────────────────────────────────────────────────────────
-    const aiResponse = await callCopilotAI(apiKey, provider, systemPrompt, userMessage);
+    const aiResponse = await callCopilotAI(apiKey, provider, model, systemPrompt, userMessage);
 
     return { response: aiResponse };
   },
@@ -144,7 +156,8 @@ ${historyStr}`;
 // ─── AI Provider Calls ───────────────────────────────────────────────────────
 async function callCopilotAI(
   apiKey: string,
-  provider: "openai" | "gemini" | "anthropic",
+  provider: "openai" | "gemini" | "anthropic" | "openrouter",
+  model: string,
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
@@ -156,7 +169,7 @@ async function callCopilotAI(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -172,7 +185,7 @@ async function callCopilotAI(
 
   if (provider === "gemini") {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -198,7 +211,7 @@ async function callCopilotAI(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model,
         max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
@@ -207,6 +220,33 @@ async function callCopilotAI(
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || `Anthropic error: ${res.status}`);
     return data.content[0].text;
+  }
+
+  if (provider === "openrouter") {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://tracelayer.io",
+        "X-Title": "TraceLayer Copilot",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.35,
+        max_tokens: 2048,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenRouter error ${res.status}: ${err}`);
+    }
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || "";
   }
 
   throw new Error(`Unknown provider: ${provider}`);

@@ -31,6 +31,7 @@ const BASE_DELAY_MS = 4000; // 4 seconds base backoff
 async function callAI(
   apiKey: string,
   provider: "openai" | "gemini" | "anthropic" | "openrouter",
+  model: string,
   systemPrompt: string,
   userPrompt: string,
   jsonMode: boolean = true,
@@ -38,7 +39,7 @@ async function callAI(
 ): Promise<string> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const result = await _callAIOnce(apiKey, provider, systemPrompt, userPrompt, jsonMode, maxTokens);
+      const result = await _callAIOnce(apiKey, provider, model, systemPrompt, userPrompt, jsonMode, maxTokens);
       return result;
     } catch (err: any) {
       const errMsg = err?.message || "";
@@ -75,6 +76,7 @@ async function callAI(
 async function _callAIOnce(
   apiKey: string,
   provider: "openai" | "gemini" | "anthropic" | "openrouter",
+  model: string,
   systemPrompt: string,
   userPrompt: string,
   jsonMode: boolean = true,
@@ -88,7 +90,7 @@ async function _callAIOnce(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -106,7 +108,7 @@ async function _callAIOnce(
 
   if (provider === "gemini") {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,7 +144,7 @@ async function _callAIOnce(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: model,
         max_tokens: maxTokens,
         temperature: 0,
         system: systemPrompt,
@@ -164,7 +166,7 @@ async function _callAIOnce(
         "X-Title": "TraceLayer BRD Generator",
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-4-maverick:free",
+        model: model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -217,12 +219,26 @@ function safeJsonParse(text: string): unknown {
 export const runExtractionPipeline = action({
   args: {
     projectId: v.id("projects"),
-    provider: v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic"), v.literal("openrouter")),
-    apiKey: v.string(),
     regenerate: v.optional(v.boolean()), // If true, clear existing data before running
   },
   handler: async (ctx, args): Promise<any> => {
-    const { projectId, provider, apiKey, regenerate } = args;
+    const { projectId, regenerate } = args;
+
+    // ─── Resolve AI config from admin settings ───────────────────────────
+    const aiConfig = await ctx.runQuery(api.aiConfig.getAIConfig);
+    if (!aiConfig?.configured) {
+      throw new Error("No AI provider configured. Ask your admin to set up an API key in the Admin Panel.");
+    }
+    const settings: Record<string, string> = await ctx.runQuery(api.settings.getAll);
+    const defaultProvider = settings["default_provider"] || aiConfig.provider;
+    const apiKey = await ctx.runQuery(api.apiKeys.getKeyForProvider, {
+      provider: defaultProvider as any,
+    });
+    if (!apiKey) {
+      throw new Error(`No API key found for provider "${defaultProvider}". Configure one in the Admin Panel.`);
+    }
+    const provider = defaultProvider as "openai" | "gemini" | "anthropic" | "openrouter";
+    const model = aiConfig.model!;
 
     // ─── CHECK 1: Is pipeline already running? ─────────────────────────────
     const runs = await ctx.runQuery(api.pipeline.getLatestRun, { projectId });
@@ -335,6 +351,7 @@ ${source.content.substring(0, 16000)}`;
         const classResult = await callAI(
           apiKey,
           provider,
+          model,
           "You are a communication classifier for a requirements intelligence system. " + SOUL_DOCUMENT.substring(0, 200),
           classifyPrompt,
           true,
@@ -443,6 +460,7 @@ ${chunks[ci]}`;
           const reqResult = await callAI(
             apiKey,
             provider,
+            model,
             "You are a precision requirements extraction agent. " + SOUL_DOCUMENT.substring(0, 300),
             reqPrompt,
             true,
@@ -578,6 +596,7 @@ ${allSourceContent}`;
       const stakeholderResult = await callAI(
         apiKey,
         provider,
+        model,
         "You are a stakeholder intelligence agent. " + SOUL_DOCUMENT.substring(0, 200),
         stakeholderPrompt,
         true,
@@ -674,6 +693,7 @@ ${allSourceContent}`;
       const decisionResult = await callAI(
         apiKey,
         provider,
+        model,
         "You are a decision intelligence agent. " + SOUL_DOCUMENT.substring(0, 200),
         decisionPrompt,
         true,
@@ -781,6 +801,7 @@ ${allSourceContent}`;
       const timelineResult = await callAI(
         apiKey,
         provider,
+        model,
         "You are a timeline intelligence agent. Extract dates, milestones, and deadlines.",
         timelinePrompt
       );
@@ -863,6 +884,7 @@ If no genuine conflicts exist, return { "conflicts": [] }`;
         const conflictResult = await callAI(
           apiKey,
           provider,
+          model,
           "You are a conflict detection agent. Be thorough — identify ALL contradictions, tensions, and incompatibilities between requirements. Err on the side of finding more conflicts rather than fewer.",
           conflictPrompt,
           true,
@@ -1197,6 +1219,7 @@ Return ONLY valid JSON:
       const brdResult = await callAI(
         apiKey,
         provider,
+        model,
         `You are a senior business analyst generating an intelligence-driven Business Requirements Document. Your output quality MUST meet these standards:
 
 1. WRITE LIKE A PROFESSIONAL ANALYST presenting to C-level executives. Every sentence must carry substance.

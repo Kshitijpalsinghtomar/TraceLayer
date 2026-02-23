@@ -9,11 +9,12 @@
  * 5. Answers questions about extracted intelligence
  *
  * Architecture: Upload → Chat with AI → AI calls agents → BRD generated
+ * Provider/model selection is managed by the admin via the Admin Panel.
  */
 import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router";
 import {
@@ -24,7 +25,6 @@ import {
   Loader2,
   FileText,
   Zap,
-  ChevronDown,
   AlertCircle,
   Play,
   Terminal,
@@ -96,10 +96,7 @@ export function AIChat({ projectId }: AIChatProps) {
   const messages = useQuery(api.chat.listMessages, {
     projectId: projectId as Id<"projects">,
   });
-  const storedKeyGemini = useQuery(api.apiKeys.getKeyForProvider, { provider: "gemini" });
-  const storedKeyOpenai = useQuery(api.apiKeys.getKeyForProvider, { provider: "openai" });
-  const storedKeyAnthropic = useQuery(api.apiKeys.getKeyForProvider, { provider: "anthropic" });
-  const activeKeys = useQuery(api.apiKeys.getActiveKeys);
+  const aiConfig = useQuery(api.aiConfig.getAIConfig);
   const chatAction = useAction(api.chatAction.chat);
   const runPipeline = useAction(api.extraction.runExtractionPipeline);
   const sendMessage = useMutation(api.chat.sendMessage);
@@ -113,34 +110,14 @@ export function AIChat({ projectId }: AIChatProps) {
   });
 
   const [input, setInput] = useState("");
-  const [provider, setProvider] = useState<"openai" | "gemini" | "anthropic">("gemini");
   const [sending, setSending] = useState(false);
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineStage, setPipelineStage] = useState(-1);
   const [error, setError] = useState<string | null>(null);
-  const [showProviderPicker, setShowProviderPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // API key resolution
-  const getApiKey = useCallback(() => {
-    if (provider === "gemini") return storedKeyGemini;
-    if (provider === "openai") return storedKeyOpenai;
-    if (provider === "anthropic") return storedKeyAnthropic;
-    return null;
-  }, [provider, storedKeyGemini, storedKeyOpenai, storedKeyAnthropic]);
-
-  const currentKey = getApiKey();
-  const hasKey = !!currentKey;
-
-  // Auto-select provider with saved key
-  useEffect(() => {
-    if (!activeKeys) return;
-    const providers = activeKeys.map((k: any) => k.provider);
-    if (providers.includes("openai")) setProvider("openai");
-    else if (providers.includes("gemini")) setProvider("gemini");
-    else if (providers.includes("anthropic")) setProvider("anthropic");
-  }, [activeKeys]);
+  const hasAI = !!aiConfig?.configured;
 
   // Auto-scroll
   useEffect(() => {
@@ -177,8 +154,8 @@ export function AIChat({ projectId }: AIChatProps) {
     const msg = text || input.trim();
     if (!msg || sending || pipelineRunning) return;
 
-    if (!currentKey) {
-      setError("No API key configured. Go to AI Settings to add one.");
+    if (!hasAI) {
+      setError("No AI provider configured. Ask your admin to set up an API key in the Admin Panel.");
       return;
     }
 
@@ -192,8 +169,6 @@ export function AIChat({ projectId }: AIChatProps) {
       try {
         await runPipeline({
           projectId: projectId as Id<"projects">,
-          provider,
-          apiKey: currentKey,
         });
 
         setPipelineStage(9); // completed
@@ -228,8 +203,6 @@ export function AIChat({ projectId }: AIChatProps) {
       await chatAction({
         projectId: projectId as Id<"projects">,
         userMessage: msg,
-        provider,
-        apiKey: currentKey,
       });
     } catch (e: any) {
       setError(e.message || "Failed to send message");
@@ -246,11 +219,9 @@ export function AIChat({ projectId }: AIChatProps) {
     }
   };
 
-  const providerInfo: Record<string, { label: string; color: string }> = {
-    gemini: { label: "Gemini 2.0 Flash", color: "#4285F4" },
-    openai: { label: "GPT-4o", color: "#10A37F" },
-    anthropic: { label: "Claude", color: "#D97706" },
-  };
+  const providerLabel = aiConfig?.configured
+    ? `${aiConfig.provider === "openrouter" ? "OpenRouter" : aiConfig.provider === "openai" ? "OpenAI" : aiConfig.provider === "gemini" ? "Gemini" : "Claude"} • ${aiConfig.model}`
+    : "Not configured";
 
   const msgList = messages ?? [];
 
@@ -270,54 +241,10 @@ export function AIChat({ projectId }: AIChatProps) {
           </div>
         </div>
 
-        {/* Provider picker */}
-        <div className="relative">
-          <button
-            onClick={() => setShowProviderPicker(!showProviderPicker)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-[12px] hover:bg-accent transition-colors"
-          >
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: providerInfo[provider].color }} />
-            {providerInfo[provider].label}
-            <ChevronDown className="w-3 h-3 text-muted-foreground" />
-          </button>
-
-          <AnimatePresence>
-            {showProviderPicker && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className="absolute right-0 top-full mt-1 w-52 bg-card border border-border rounded-xl shadow-lg z-50 py-1"
-              >
-                {(["gemini", "openai", "anthropic"] as const).map((p) => {
-                  const info = providerInfo[p];
-                  const saved = activeKeys?.find((k: any) => k.provider === p);
-                  return (
-                    <button
-                      key={p}
-                      onClick={() => {
-                        setProvider(p);
-                        setShowProviderPicker(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 text-[12px] hover:bg-accent transition-colors flex items-center justify-between ${
-                        provider === p ? "bg-primary/5 text-primary" : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: info.color }} />
-                        {info.label}
-                      </div>
-                      {saved && (
-                        <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                          saved
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </motion.div>
-            )}
-          </AnimatePresence>
+        {/* Provider indicator (read-only, set by admin) */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-[12px] text-muted-foreground">
+          <div className={`w-2 h-2 rounded-full ${hasAI ? "bg-emerald-500" : "bg-amber-500"}`} />
+          {providerLabel}
         </div>
       </div>
 
@@ -336,18 +263,17 @@ export function AIChat({ projectId }: AIChatProps) {
               and generate a complete BRD for you.
             </p>
 
-            {!hasKey && (
+            {!hasAI && (
               <div className="bg-amber-50 text-amber-700 border border-amber-200 rounded-xl px-5 py-3 text-[12px] mb-6 max-w-md">
-                <p className="font-medium">No API key configured</p>
+                <p className="font-medium">No AI provider configured</p>
                 <p className="mt-0.5">
-                  Go to{" "}
+                  Ask your admin to configure an API key in the{" "}
                   <button
-                    onClick={() => navigate("/ai-settings")}
+                    onClick={() => navigate("/admin")}
                     className="underline font-medium"
                   >
-                    AI Settings
-                  </button>{" "}
-                  to add your {providerInfo[provider].label} key.
+                    Admin Panel
+                  </button>.
                 </p>
               </div>
             )}
@@ -358,12 +284,11 @@ export function AIChat({ projectId }: AIChatProps) {
                 <button
                   key={action.label}
                   onClick={() => handleSend(action.prompt)}
-                  disabled={!hasKey}
-                  className={`flex flex-col items-start gap-2 p-3.5 rounded-xl border transition-all text-left disabled:opacity-40 disabled:cursor-not-allowed ${
-                    action.primary
+                  disabled={!hasAI}
+                  className={`flex flex-col items-start gap-2 p-3.5 rounded-xl border transition-all text-left disabled:opacity-40 disabled:cursor-not-allowed ${action.primary
                       ? "border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary/60 col-span-3"
                       : "border-border hover:border-primary/30 hover:bg-accent"
-                  }`}
+                    }`}
                 >
                   {action.primary ? (
                     <div className="flex items-center gap-3 w-full">
@@ -452,41 +377,40 @@ export function AIChat({ projectId }: AIChatProps) {
 
           // ─── Normal messages ─────────────────────────────────────────────
           return (
-          <motion.div
-            key={msg._id}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}
-          >
-            {msg.role === "assistant" && (
-              <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                <Bot className="w-4 h-4 text-primary" />
-              </div>
-            )}
-
-            <div
-              className={`max-w-[75%] rounded-2xl px-5 py-3.5 text-[13px] leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-card border border-border"
-              }`}
+            <motion.div
+              key={msg._id}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}
             >
-              {msg.role === "assistant" ? (
-                <div
-                  className="prose prose-sm max-w-none dark:prose-invert [&>p]:mb-2 [&>ul]:mb-2 [&>ol]:mb-2 [&_li]:mb-0.5"
-                  dangerouslySetInnerHTML={{ __html: simpleMarkdown(msg.content) }}
-                />
-              ) : (
-                msg.content
+              {msg.role === "assistant" && (
+                <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot className="w-4 h-4 text-primary" />
+                </div>
               )}
-            </div>
 
-            {msg.role === "user" && (
-              <div className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                <User className="w-4 h-4 text-muted-foreground" />
+              <div
+                className={`max-w-[75%] rounded-2xl px-5 py-3.5 text-[13px] leading-relaxed ${msg.role === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card border border-border"
+                  }`}
+              >
+                {msg.role === "assistant" ? (
+                  <div
+                    className="prose prose-sm max-w-none dark:prose-invert [&>p]:mb-2 [&>ul]:mb-2 [&>ol]:mb-2 [&_li]:mb-0.5"
+                    dangerouslySetInnerHTML={{ __html: simpleMarkdown(msg.content) }}
+                  />
+                ) : (
+                  msg.content
+                )}
               </div>
-            )}
-          </motion.div>
+
+              {msg.role === "user" && (
+                <div className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                  <User className="w-4 h-4 text-muted-foreground" />
+                </div>
+              )}
+            </motion.div>
           );
         })}
 
@@ -524,18 +448,16 @@ export function AIChat({ projectId }: AIChatProps) {
                 {PIPELINE_AGENTS.map((agent, i) => {
                   const isDone = pipelineStage > i;
                   const isCurrent = pipelineStage === i;
-                  const isPending = pipelineStage < i;
 
                   return (
                     <div
                       key={agent.key}
-                      className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-all ${
-                        isCurrent
+                      className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-all ${isCurrent
                           ? "bg-blue-50 border border-blue-200"
                           : isDone
-                          ? "bg-emerald-50/50"
-                          : "opacity-40"
-                      }`}
+                            ? "bg-emerald-50/50"
+                            : "opacity-40"
+                        }`}
                     >
                       {isDone ? (
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -545,13 +467,12 @@ export function AIChat({ projectId }: AIChatProps) {
                         <agent.icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       )}
                       <span
-                        className={`text-[12px] ${
-                          isCurrent
+                        className={`text-[12px] ${isCurrent
                             ? "text-blue-700 font-medium"
                             : isDone
-                            ? "text-emerald-700"
-                            : "text-muted-foreground"
-                        }`}
+                              ? "text-emerald-700"
+                              : "text-muted-foreground"
+                          }`}
                       >
                         {agent.label}
                       </span>
@@ -597,7 +518,7 @@ export function AIChat({ projectId }: AIChatProps) {
               <button
                 key={action.label}
                 onClick={() => handleSend(action.prompt)}
-                disabled={!hasKey}
+                disabled={!hasAI}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors whitespace-nowrap shrink-0 disabled:opacity-40"
               >
                 <action.icon className="w-3 h-3" />
@@ -614,13 +535,13 @@ export function AIChat({ projectId }: AIChatProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              !hasKey
-                ? `No ${provider} API key — configure in AI Settings`
+              !hasAI
+                ? "No AI provider configured — ask admin to set up in Admin Panel"
                 : pipelineRunning
-                ? "Pipeline is running..."
-                : "Tell me what to do — analyze docs, generate BRD, review requirements..."
+                  ? "Pipeline is running..."
+                  : "Tell me what to do — analyze docs, generate BRD, review requirements..."
             }
-            disabled={!hasKey || sending || pipelineRunning}
+            disabled={!hasAI || sending || pipelineRunning}
             rows={1}
             className="flex-1 resize-none bg-background border border-border rounded-xl px-4 py-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 max-h-[140px]"
             style={{ minHeight: "44px" }}
@@ -632,7 +553,7 @@ export function AIChat({ projectId }: AIChatProps) {
           />
           <button
             onClick={() => handleSend()}
-            disabled={!input.trim() || !hasKey || sending || pipelineRunning}
+            disabled={!input.trim() || !hasAI || sending || pipelineRunning}
             className="w-11 h-11 rounded-xl bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
           >
             <Send className="w-4 h-4" />

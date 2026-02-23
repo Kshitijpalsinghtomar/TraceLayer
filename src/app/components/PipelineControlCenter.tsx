@@ -80,6 +80,7 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
   const diagnostics = useQuery(api.pipeline.getDiagnostics, { projectId: pid });
   const sources = useQuery(api.sources.listByProject, { projectId: pid });
   const activeKeys = useQuery(api.apiKeys.getActiveKeys);
+  const aiConfig = useQuery(api.aiConfig.getAIConfig);
   const connectedIntegrations = useQuery(api.integrations.listConnected);
   const logs = useQuery(
     api.pipeline.getLogsForRun,
@@ -100,9 +101,6 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
   const [tab, setTab] = useState<ControlTab>("controls");
   const [isRunning, setIsRunning] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [provider, setProvider] = useState<"openai" | "gemini" | "anthropic">("gemini");
-  const [apiKey, setApiKey] = useState("");
-  const [usingStoredKey, setUsingStoredKey] = useState(false);
   const [regenerateMode, setRegenerateMode] = useState(false);
   const [syncWithIntegrations, setSyncWithIntegrations] = useState(true);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
@@ -111,12 +109,7 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
   const [testResults, setTestResults] = useState<Record<string, { status: "pass" | "fail" | "running" | "pending"; message: string }>>({});
   const [isTestRunning, setIsTestRunning] = useState(false);
 
-  // Auto-load stored key
-  const storedKey = useQuery(api.apiKeys.getKeyForProvider, { provider });
-  useEffect(() => {
-    if (storedKey) { setApiKey(storedKey); setUsingStoredKey(true); }
-    else { setApiKey(""); setUsingStoredKey(false); }
-  }, [provider, storedKey]);
+  const hasAI = !!aiConfig?.configured;
 
   // Detect running state
   useEffect(() => {
@@ -137,14 +130,14 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
 
   // ─── Handlers ──────────────────────────────────────────────────────────
   const handleStart = useCallback(async () => {
-    if (!apiKey || !projectId) return;
+    if (!hasAI || !projectId) return;
     setIsRunning(true);
     setActionResult(null);
     try {
       if (syncWithIntegrations && connectedCount > 0) {
-        await syncAndRun({ projectId: pid, provider, apiKey, regenerate: regenerateMode });
+        await syncAndRun({ projectId: pid, regenerate: regenerateMode });
       } else {
-        await runPipeline({ projectId: pid, provider, apiKey, regenerate: regenerateMode });
+        await runPipeline({ projectId: pid, regenerate: regenerateMode });
       }
       setActionResult({ type: "success", message: "Pipeline completed successfully!" });
     } catch (e: any) {
@@ -152,7 +145,7 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
     } finally {
       setIsRunning(false);
     }
-  }, [apiKey, projectId, provider, syncWithIntegrations, connectedCount, regenerateMode, syncAndRun, runPipeline, pid]);
+  }, [hasAI, projectId, syncWithIntegrations, connectedCount, regenerateMode, syncAndRun, runPipeline, pid]);
 
   const handleCancel = useCallback(async () => {
     await cancelPipeline({ projectId: pid });
@@ -200,14 +193,14 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
     setIsTestRunning(true);
     const results: Record<string, { status: "pass" | "fail" | "running" | "pending"; message: string }> = {};
 
-    // Test 1: API Key configured
-    results["api_key"] = { status: "running", message: "Checking API key..." };
+    // Test 1: AI configured
+    results["api_key"] = { status: "running", message: "Checking AI config..." };
     setTestResults({ ...results });
     await sleep(400);
-    if (apiKey && apiKey.length > 10) {
-      results["api_key"] = { status: "pass", message: `${provider} key configured (${apiKey.slice(0, 6)}...)` };
+    if (hasAI) {
+      results["api_key"] = { status: "pass", message: `${aiConfig?.provider} configured (${aiConfig?.model})` };
     } else {
-      results["api_key"] = { status: "fail", message: "No valid API key configured" };
+      results["api_key"] = { status: "fail", message: "No AI provider configured — ask admin" };
     }
     setTestResults({ ...results });
 
@@ -304,14 +297,14 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
     setTestResults({ ...results });
 
     setIsTestRunning(false);
-  }, [apiKey, provider, sourceCount, sources, connectedCount, project, diagnostics, isRunning]);
+  }, [hasAI, aiConfig, sourceCount, sources, connectedCount, project, diagnostics, isRunning]);
 
   // ─── Derived data ─────────────────────────────────────────────────────
   const isCompleted = latestRun?.status === "completed";
   const isFailed = latestRun?.status === "failed";
   const isCancelled = latestRun?.status === "cancelled";
   const isIdle = !isRunning && !latestRun;
-  const canStart = !!apiKey && !isRunning;
+  const canStart = hasAI && !isRunning;
   const hasData = (diagnostics?.extraction.requirements ?? 0) > 0;
 
   // Current pipeline stage name
@@ -337,11 +330,10 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[11px] font-medium transition-all border-b-2 ${
-              tab === t.id
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[11px] font-medium transition-all border-b-2 ${tab === t.id
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             <t.icon className="w-3.5 h-3.5" />
             {t.label}
@@ -356,11 +348,10 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className={`mx-3 mt-2 px-3 py-2 rounded-lg text-[11px] flex items-center gap-2 ${
-              actionResult.type === "success"
+            className={`mx-3 mt-2 px-3 py-2 rounded-lg text-[11px] flex items-center gap-2 ${actionResult.type === "success"
                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                 : "bg-red-50 text-red-700 border border-red-200"
-            }`}
+              }`}
           >
             {actionResult.type === "success" ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <XCircle className="w-3.5 h-3.5 shrink-0" />}
             <span className="truncate">{actionResult.message}</span>
@@ -383,17 +374,16 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
               className="p-3 space-y-3"
             >
               {/* Pipeline Status Banner */}
-              <div className={`rounded-xl p-3 border ${
-                isRunning
+              <div className={`rounded-xl p-3 border ${isRunning
                   ? "bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800"
                   : isCompleted
-                  ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800"
-                  : isFailed
-                  ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800"
-                  : isCancelled
-                  ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
-                  : "bg-muted/30 border-border"
-              }`}>
+                    ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800"
+                    : isFailed
+                      ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800"
+                      : isCancelled
+                        ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
+                        : "bg-muted/30 border-border"
+                }`}>
                 <div className="flex items-center gap-2 mb-1">
                   {isRunning ? (
                     <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
@@ -435,58 +425,26 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
                 )}
               </div>
 
-              {/* Provider Selection */}
+              {/* AI Provider Config (read-only — admin managed) */}
               <div className="space-y-2">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">AI Provider</p>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {([
-                    { id: "gemini", label: "Gemini", color: "#6366F1" },
-                    { id: "openai", label: "GPT-4o", color: "#10B981" },
-                    { id: "anthropic", label: "Claude", color: "#F59E0B" },
-                  ] as const).map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => setProvider(p.id)}
-                      disabled={isRunning}
-                      className={`px-2 py-2 rounded-lg text-[11px] font-medium border transition-all ${
-                        provider === p.id
-                          ? "border-2"
-                          : "border-border/50 hover:border-muted-foreground/30"
-                      } disabled:opacity-50`}
-                      style={provider === p.id ? { borderColor: p.color, backgroundColor: `${p.color}08`, color: p.color } : {}}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
+                <div className={`py-2.5 px-3 rounded-lg border text-[12px] flex items-center gap-2 ${hasAI
+                    ? "border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400"
+                    : "border-amber-200 bg-amber-50/80 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400"
+                  }`}>
+                  {hasAI ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span className="truncate">{aiConfig?.provider} — {aiConfig?.model}</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>No AI configured — ask admin</span>
+                    </>
+                  )}
                 </div>
-
-                {/* API Key */}
-                {usingStoredKey ? (
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 px-2.5 py-2 rounded-lg border border-emerald-200 bg-emerald-50/80 text-[10px] text-emerald-700 flex items-center gap-1.5 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span className="truncate">Using saved {provider} key</span>
-                    </div>
-                    <button
-                      onClick={() => { setUsingStoredKey(false); setApiKey(""); }}
-                      className="text-[9px] text-muted-foreground hover:text-foreground px-2 py-2 rounded-lg border border-border hover:bg-muted/50 transition-colors"
-                    >
-                      Change
-                    </button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <KeyRound className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                    <input
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder={`${provider} API key...`}
-                      disabled={isRunning}
-                      className="w-full pl-8 pr-3 py-2 rounded-lg border border-border/50 bg-background/50 text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all disabled:opacity-50"
-                    />
-                  </div>
-                )}
+                <p className="text-[10px] text-muted-foreground">AI provider is managed in the Admin Panel.</p>
               </div>
 
               {/* Options */}
@@ -517,11 +475,10 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
               <button
                 onClick={handleStart}
                 disabled={!canStart}
-                className={`w-full py-2.5 rounded-xl text-[12px] font-semibold flex items-center justify-center gap-2 transition-all ${
-                  !canStart
+                className={`w-full py-2.5 rounded-xl text-[12px] font-semibold flex items-center justify-center gap-2 transition-all ${!canStart
                     ? "bg-muted text-muted-foreground cursor-not-allowed"
                     : "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/25"
-                }`}
+                  }`}
               >
                 {isRunning ? (
                   <><Loader2 className="w-3.5 h-3.5 animate-spin" />Processing...</>
@@ -781,13 +738,12 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
                             {source.type.replace(/_/g, " ")} · {source.metadata?.wordCount?.toLocaleString() || "?"} words
                           </p>
                         </div>
-                        <span className={`text-[8px] px-1.5 py-0.5 rounded-full shrink-0 ${
-                          source.status === "extracted"
+                        <span className={`text-[8px] px-1.5 py-0.5 rounded-full shrink-0 ${source.status === "extracted"
                             ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
                             : source.status === "failed"
-                            ? "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400"
-                            : "bg-muted text-muted-foreground"
-                        }`}>
+                              ? "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400"
+                              : "bg-muted text-muted-foreground"
+                          }`}>
                           {source.status}
                         </span>
                         <button
@@ -818,11 +774,10 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
                     {runHistory.map((run) => (
                       <div key={run._id} className="flex items-center justify-between p-2 rounded-lg bg-muted/20 border border-border/40">
                         <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${
-                            run.status === "completed" ? "bg-emerald-500" :
-                            run.status === "failed" ? "bg-red-500" :
-                            run.status === "cancelled" ? "bg-amber-500" : "bg-blue-500 animate-pulse"
-                          }`} />
+                          <span className={`w-2 h-2 rounded-full ${run.status === "completed" ? "bg-emerald-500" :
+                              run.status === "failed" ? "bg-red-500" :
+                                run.status === "cancelled" ? "bg-amber-500" : "bg-blue-500 animate-pulse"
+                            }`} />
                           <div>
                             <p className="text-[10px] font-medium capitalize">{run.status.replace(/_/g, " ")}</p>
                             <p className="text-[8px] text-muted-foreground">
@@ -895,13 +850,12 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
                         key={key}
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border ${
-                          result.status === "pass"
+                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border ${result.status === "pass"
                             ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20"
                             : result.status === "fail"
-                            ? "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20"
-                            : "border-border bg-muted/20"
-                        }`}
+                              ? "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20"
+                              : "border-border bg-muted/20"
+                          }`}
                       >
                         {result.status === "running" ? (
                           <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />
@@ -928,11 +882,10 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
                         const failed = Object.values(testResults).filter((r) => r.status === "fail").length;
                         const total = Object.values(testResults).length;
                         return (
-                          <div className={`flex items-center gap-2 p-2.5 rounded-lg ${
-                            failed === 0
+                          <div className={`flex items-center gap-2 p-2.5 rounded-lg ${failed === 0
                               ? "bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800"
                               : "bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800"
-                          }`}>
+                            }`}>
                             {failed === 0 ? (
                               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                             ) : (
@@ -984,8 +937,8 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
                 {confirmAction === "cancel"
                   ? "This will stop the running pipeline. Any partial data will be preserved."
                   : confirmAction === "clear_data"
-                  ? "This will delete ALL extracted requirements, stakeholders, decisions, conflicts, and documents. Sources will be kept."
-                  : "This will delete all run history except the latest run."}
+                    ? "This will delete ALL extracted requirements, stakeholders, decisions, conflicts, and documents. Sources will be kept."
+                    : "This will delete all run history except the latest run."}
               </p>
               <div className="flex gap-2">
                 <button
@@ -997,8 +950,8 @@ export function PipelineControlCenter({ projectId, compact }: PipelineControlCen
                 <button
                   onClick={
                     confirmAction === "cancel" ? handleCancel
-                    : confirmAction === "clear_data" ? handleClearData
-                    : handleClearHistory
+                      : confirmAction === "clear_data" ? handleClearData
+                        : handleClearHistory
                   }
                   className="flex-1 py-2 rounded-lg text-[11px] bg-red-600 text-white hover:bg-red-700 transition font-medium"
                 >
@@ -1044,9 +997,8 @@ function ToggleOption({
       <button
         type="button"
         onClick={() => !disabled && onChange(!checked)}
-        className={`relative rounded-full transition-colors ${
-          checked ? "" : "bg-muted-foreground/30"
-        } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+        className={`relative rounded-full transition-colors ${checked ? "" : "bg-muted-foreground/30"
+          } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
         style={{
           width: "2rem",
           height: "1.125rem",
@@ -1054,9 +1006,8 @@ function ToggleOption({
         }}
       >
         <span
-          className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${
-            checked ? "translate-x-3.5" : "translate-x-0"
-          }`}
+          className={`absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-3.5" : "translate-x-0"
+            }`}
         />
       </button>
     </label>

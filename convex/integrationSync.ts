@@ -246,7 +246,7 @@ const APP_ADAPTERS: Record<string, (integration: any) => Promise<SyncedItem[]>> 
 
     // We need the cloud domain — extract from token or use a default JQL search
     const jql = projects.length > 0
-      ? `project in (${projects.map(p => `"${p}"`).join(",")}) ORDER BY updated DESC`
+      ? `project in (${projects.map((p: string) => `"${p}"`).join(",")}) ORDER BY updated DESC`
       : "ORDER BY updated DESC";
 
     // Since we need the domain, we'll use the Jira Cloud REST API
@@ -872,8 +872,6 @@ export const syncAllToProject = action({
 export const syncAndRunPipeline = action({
   args: {
     projectId: v.id("projects"),
-    provider: v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic")),
-    apiKey: v.string(),
     regenerate: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<any> => {
@@ -882,11 +880,9 @@ export const syncAndRunPipeline = action({
       projectId: args.projectId,
     });
 
-    // Step 2: Run the extraction pipeline
+    // Step 2: Run the extraction pipeline (provider/apiKey resolved internally)
     const pipelineResult = await ctx.runAction(api.extraction.runExtractionPipeline, {
       projectId: args.projectId,
-      provider: args.provider,
-      apiKey: args.apiKey,
       regenerate: args.regenerate,
     });
 
