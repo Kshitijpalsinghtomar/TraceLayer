@@ -44,6 +44,7 @@ import {
   AlertTriangle,
   Shield,
   Activity,
+  Target,
 } from "lucide-react";
 import { AIChat } from "./AIChat";
 import * as pdfjsLib from "pdfjs-dist";
@@ -316,6 +317,7 @@ export function ProjectWorkspace() {
   );
   const integrations = useQuery(api.integrations.list, {});
   const uploadSource = useMutation(api.sources.upload);
+  const updateProject = useMutation(api.projects.update);
   const runPipeline = useAction(api.extraction.runExtractionPipeline);
   const storedKeyGemini = useQuery(api.apiKeys.getKeyForProvider, { provider: "gemini" });
   const storedKeyOpenai = useQuery(api.apiKeys.getKeyForProvider, { provider: "openai" });
@@ -336,17 +338,37 @@ export function ProjectWorkspace() {
   const [disabledIntegrations, setDisabledIntegrations] = useState<Set<string>>(new Set());
   const [generatingBRD, setGeneratingBRD] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [showFocusDialog, setShowFocusDialog] = useState(false);
+  const [brdFocus, setBrdFocus] = useState(project?.brdFocus || "");
 
   // Resolve API key for direct pipeline trigger
   const resolvedApiKey = storedKeyOpenai || storedKeyGemini || storedKeyAnthropic;
   const resolvedProvider: "openai" | "gemini" | "anthropic" = storedKeyOpenai ? "openai" : storedKeyGemini ? "gemini" : "anthropic";
   const hasApiKey = !!resolvedApiKey;
 
-  const handleGenerateBRD = async () => {
+  const handleGenerateBRD = () => {
     if (!resolvedApiKey || generatingBRD) return;
+    setShowFocusDialog(true);
+  };
+
+  const launchPipeline = async (focus: string) => {
+    if (!resolvedApiKey || generatingBRD) return;
+    setShowFocusDialog(false);
     setGeneratingBRD(true);
     setGenerateError(null);
     try {
+      // Save focus to project
+      if (focus.trim()) {
+        await updateProject({
+          projectId: projectId as Id<"projects">,
+          brdFocus: focus.trim(),
+        });
+      } else {
+        await updateProject({
+          projectId: projectId as Id<"projects">,
+          brdFocus: "",
+        });
+      }
       await runPipeline({
         projectId: projectId as Id<"projects">,
         provider: resolvedProvider,
@@ -703,10 +725,78 @@ export function ProjectWorkspace() {
                       })}
                     </div>
                   ) : (
-                    <div className="bg-card rounded-2xl border border-dashed border-border p-10 text-center">
-                      <FolderOpen className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
-                      <p className="text-[14px] text-muted-foreground mb-1">No sources uploaded yet</p>
-                      <p className="text-[12px] text-muted-foreground/60">Upload documents or connect integrations to get started</p>
+                    <div className="bg-gradient-to-br from-primary/[0.04] to-violet-500/[0.04] rounded-2xl border border-primary/10 p-8">
+                      <div className="text-center mb-6">
+                        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                          <FolderOpen className="w-7 h-7 text-primary/60" />
+                        </div>
+                        <h3 className="text-[16px] font-semibold mb-1">No sources yet</h3>
+                        <p className="text-[13px] text-muted-foreground max-w-md mx-auto">
+                          Add files or connect integrations to generate your BRD. TraceLayer needs communication data to extract requirements.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        {[
+                          {
+                            step: 1,
+                            title: "Upload Files",
+                            desc: "Drop PDFs, emails, meeting transcripts, or chat logs above",
+                            icon: Upload,
+                            color: "#3B82F6",
+                            active: true,
+                          },
+                          {
+                            step: 2,
+                            title: "Connect Integrations",
+                            desc: "Link Slack, Jira, GitHub, or other tools for automatic syncing",
+                            icon: Settings2,
+                            color: "#8B5CF6",
+                            active: !connectedIntegrations.length,
+                          },
+                          {
+                            step: 3,
+                            title: "Generate BRD",
+                            desc: "Our 9 AI agents will extract requirements and produce a full BRD",
+                            icon: Sparkles,
+                            color: "#22C55E",
+                            active: false,
+                          },
+                        ].map((item) => (
+                          <div
+                            key={item.step}
+                            className={`rounded-xl p-4 border transition-all ${item.active
+                              ? "border-primary/20 bg-card shadow-sm"
+                              : "border-border/30 bg-card/50 opacity-60"
+                              }`}
+                          >
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center mb-2.5"
+                              style={{ backgroundColor: `${item.color}12` }}
+                            >
+                              <item.icon className="w-4 h-4" style={{ color: item.color }} />
+                            </div>
+                            <div className="text-[10px] text-muted-foreground/50 uppercase tracking-wider mb-0.5">
+                              Step {item.step}
+                            </div>
+                            <p className="text-[12px] font-medium mb-0.5">{item.title}</p>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">{item.desc}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {!connectedIntegrations.length && (
+                        <div className="mt-4 text-center">
+                          <button
+                            onClick={() => navigate("/integrations")}
+                            className="text-[12px] text-primary hover:underline inline-flex items-center gap-1"
+                          >
+                            <Settings2 className="w-3 h-3" />
+                            Set up integrations
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -723,10 +813,10 @@ export function ProjectWorkspace() {
                           {generatingBRD ? "Generating BRD..." : "Ready to generate BRD"}
                         </p>
                         <p className="text-[12px] text-muted-foreground">
-                          {sourceList.length} source{sourceList.length > 1 ? "s" : ""} uploaded.
                           {hasApiKey
-                            ? " 9 AI agents will extract requirements and generate your BRD."
-                            : " Configure an API key in AI Settings first."}
+                            ? `${sourceList.length} source${sourceList.length > 1 ? "s" : ""} uploaded. 9 AI agents will extract requirements, stakeholders, decisions, and generate your BRD.`
+                            : "Configure an API key in AI Settings first."}
+                          {hasApiKey && " Estimated time: ~2-4 minutes."}
                         </p>
                       </div>
                       <button
@@ -737,7 +827,7 @@ export function ProjectWorkspace() {
                         {generatingBRD ? (
                           <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
                         ) : (
-                          <><Sparkles className="w-4 h-4" /> Generate BRD</>
+                          <><Sparkles className="w-4 h-4" /> Generate BRD from {sourceList.length} Source{sourceList.length > 1 ? "s" : ""}</>
                         )}
                       </button>
                     </div>
@@ -749,6 +839,77 @@ export function ProjectWorkspace() {
                     )}
                   </div>
                 )}
+
+                {/* ─── BRD Focus Dialog ──────────────────────────────────────── */}
+                <AnimatePresence>
+                  {showFocusDialog && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+                      onClick={() => setShowFocusDialog(false)}
+                    >
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                        transition={{ duration: 0.2 }}
+                        className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-[520px] mx-4 overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Header */}
+                        <div className="px-6 pt-6 pb-4">
+                          <div className="flex items-center gap-3 mb-1">
+                            <div className="w-10 h-10 rounded-xl bg-primary/12 flex items-center justify-center">
+                              <Target className="w-5 h-5 text-primary" />
+                            </div>
+                            <div>
+                              <h3 className="text-[16px] font-semibold">What should this BRD focus on?</h3>
+                              <p className="text-[12px] text-muted-foreground">
+                                Tell the AI what topic to extract from your {sourceList.length} source{sourceList.length > 1 ? "s" : ""}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Focus Input */}
+                        <div className="px-6 pb-4">
+                          <textarea
+                            value={brdFocus}
+                            onChange={(e) => setBrdFocus(e.target.value)}
+                            placeholder="e.g., Payment system migration, User onboarding redesign, API gateway architecture..."
+                            rows={3}
+                            autoFocus
+                            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-[14px] placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/30 focus:ring-2 focus:ring-primary/8 transition-all resize-none"
+                          />
+                          <p className="text-[11px] text-muted-foreground/60 mt-2 leading-relaxed">
+                            💡 Your sources may contain discussions about multiple projects. Defining a focus ensures the AI only extracts requirements, stakeholders, and decisions relevant to this specific topic.
+                          </p>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="px-6 pb-6 flex items-center gap-2">
+                          <button
+                            onClick={() => launchPipeline(brdFocus)}
+                            disabled={!brdFocus.trim()}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-xl text-[13px] font-semibold hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-primary/20"
+                          >
+                            <Target className="w-4 h-4" />
+                            Generate Focused BRD
+                          </button>
+                          <button
+                            onClick={() => launchPipeline("")}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-border rounded-xl text-[13px] font-medium text-muted-foreground hover:text-foreground hover:border-primary/20 hover:bg-accent/50 transition-all"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                            Skip — Full-Scope BRD
+                          </button>
+                        </div>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             )}
 

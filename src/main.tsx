@@ -2,13 +2,14 @@ import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import App from "./app/App.tsx";
 import { ErrorBoundary } from "./app/components/ErrorBoundary";
-import { SpeedInsights } from "@vercel/speed-insights/next"
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import "./styles/index.css";
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <ConvexProvider client={convex}>
       <App />
+      <SpeedInsights />
     </ConvexProvider>
   </ErrorBoundary>
 );

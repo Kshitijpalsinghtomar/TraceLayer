@@ -27,6 +27,7 @@ import {
   ArrowUpRight,
   SlidersHorizontal,
   Rocket,
+  CheckCircle2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
@@ -314,6 +315,62 @@ export function DashboardLive() {
         </div>
       </motion.div>
 
+      {/* Getting Started Progress Banner — shown until user has at least 1 completed BRD */}
+      {projects && projects.length > 0 && (() => {
+        const projectsWithSources = projects.filter((p: any) => (p.sourceCount || 0) > 0).length;
+        const projectsWithBRD = projects.filter((p: any) => p.status === "active" || p.status === "completed").length;
+        // Hide banner once user has at least one project with a completed BRD
+        if (projectsWithBRD > 0) return null;
+
+        const steps = [
+          { label: "Create a Project", done: true, detail: `${projects.length} project${projects.length > 1 ? "s" : ""} created` },
+          { label: "Add Sources", done: projectsWithSources > 0, detail: projectsWithSources > 0 ? `${projectsWithSources} project${projectsWithSources > 1 ? "s" : ""} with sources` : "Upload files or connect integrations" },
+          { label: "Generate BRD", done: false, detail: "Run the AI pipeline to extract & generate" },
+        ];
+
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.03 }}
+            className="mb-6 bg-gradient-to-r from-primary/[0.06] via-violet-500/[0.04] to-primary/[0.06] rounded-2xl border border-primary/15 p-5"
+          >
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-primary/12 flex items-center justify-center">
+                <Rocket className="w-4 h-4 text-primary" />
+              </div>
+              <h3 className="text-[14px] font-semibold">Getting Started</h3>
+              <span className="text-[11px] text-muted-foreground ml-auto">Complete these steps to generate your first BRD</span>
+            </div>
+            <div className="flex items-start gap-3">
+              {steps.map((step, i) => (
+                <div key={i} className="flex items-center flex-1">
+                  <div className="flex flex-col items-center flex-1">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-2 transition-all ${step.done
+                      ? "bg-emerald-500/15 text-emerald-600"
+                      : "bg-muted/60 text-muted-foreground/40"
+                      }`}>
+                      {step.done ? (
+                        <CheckCircle2 className="w-5 h-5" />
+                      ) : (
+                        <span className="text-[14px] font-bold">{i + 1}</span>
+                      )}
+                    </div>
+                    <p className={`text-[12px] font-medium text-center ${step.done ? "text-emerald-600" : "text-foreground"}`}>
+                      {step.label}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground text-center mt-0.5">{step.detail}</p>
+                  </div>
+                  {i < steps.length - 1 && (
+                    <div className={`w-12 h-[2px] mx-1 mt-[-16px] rounded-full ${step.done ? "bg-emerald-400/50" : "bg-border/40"}`} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        );
+      })()}
+
       {/* Stats Grid with gradient cards */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -469,11 +526,10 @@ export function DashboardLive() {
                 return (
                   <div
                     key={agent.id}
-                    className={`relative p-3.5 rounded-xl border transition-all duration-300 ${
-                      isActive
-                        ? "border-primary/25 bg-gradient-to-br from-primary/[0.04] to-violet-500/[0.04] shadow-md shadow-primary/5"
-                        : "border-border/40 hover:border-primary/15 hover:bg-accent/30 hover:shadow-sm"
-                    }`}
+                    className={`relative p-3.5 rounded-xl border transition-all duration-300 ${isActive
+                      ? "border-primary/25 bg-gradient-to-br from-primary/[0.04] to-violet-500/[0.04] shadow-md shadow-primary/5"
+                      : "border-border/40 hover:border-primary/15 hover:bg-accent/30 hover:shadow-sm"
+                      }`}
                   >
                     {isActive && (
                       <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-500">
@@ -532,7 +588,7 @@ export function DashboardLive() {
                 {/* Decorative gradient blobs */}
                 <div className="absolute top-0 left-1/4 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
                 <div className="absolute bottom-0 right-1/4 w-24 h-24 bg-violet-500/5 rounded-full blur-2xl" />
-                
+
                 <div className="relative">
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/10 to-violet-500/10 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-primary/5">
                     <Network className="w-8 h-8 text-primary/50" />
@@ -643,13 +699,12 @@ export function DashboardLive() {
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <span
-                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                          run.status === "completed"
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
-                            : run.status === "failed"
-                              ? "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400"
-                              : "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
-                        }`}
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${run.status === "completed"
+                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
+                          : run.status === "failed"
+                            ? "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400"
+                            : "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+                          }`}
                       >
                         {run.status.replace(/_/g, " ")}
                       </span>

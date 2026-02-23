@@ -30,6 +30,7 @@ export default defineSchema({
     stakeholderCount: v.number(),
     decisionCount: v.number(),
     conflictCount: v.number(),
+    brdFocus: v.optional(v.string()), // Optional focus scope: "Generate BRD about X topic only"
   }),
 
   // ─── Sources (uploaded files / ingested data) ────────────────────────────

@@ -64,6 +64,7 @@ export const update = mutation({
     progress: v.optional(v.number()),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
+    brdFocus: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { projectId, ...updates } = args;
@@ -140,7 +141,7 @@ export const clearExtractionData = mutation({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
     const { projectId } = args;
-    
+
     // Clear requirements
     const requirements = await ctx.db
       .query("requirements")
@@ -149,7 +150,7 @@ export const clearExtractionData = mutation({
     for (const req of requirements) {
       await ctx.db.delete(req._id);
     }
-    
+
     // Clear stakeholders
     const stakeholders = await ctx.db
       .query("stakeholders")
@@ -158,7 +159,7 @@ export const clearExtractionData = mutation({
     for (const sh of stakeholders) {
       await ctx.db.delete(sh._id);
     }
-    
+
     // Clear decisions
     const decisions = await ctx.db
       .query("decisions")
@@ -167,7 +168,7 @@ export const clearExtractionData = mutation({
     for (const dec of decisions) {
       await ctx.db.delete(dec._id);
     }
-    
+
     // Clear conflicts
     const conflicts = await ctx.db
       .query("conflicts")
@@ -176,7 +177,7 @@ export const clearExtractionData = mutation({
     for (const con of conflicts) {
       await ctx.db.delete(con._id);
     }
-    
+
     // Mark existing documents as outdated (keep for version history)
     const docs = await ctx.db
       .query("documents")
@@ -187,7 +188,7 @@ export const clearExtractionData = mutation({
         await ctx.db.patch(doc._id, { status: "outdated" });
       }
     }
-    
+
     // Clear traceability links
     const traceLinks = await ctx.db
       .query("traceabilityLinks")
@@ -196,7 +197,7 @@ export const clearExtractionData = mutation({
     for (const link of traceLinks) {
       await ctx.db.delete(link._id);
     }
-    
+
     // Clear timeline events
     const timelineEvents = await ctx.db
       .query("timelineEvents")
@@ -205,7 +206,7 @@ export const clearExtractionData = mutation({
     for (const event of timelineEvents) {
       await ctx.db.delete(event._id);
     }
-    
+
     // Reset source statuses to 'uploaded' for re-processing
     const sources = await ctx.db
       .query("sources")
@@ -214,7 +215,7 @@ export const clearExtractionData = mutation({
     for (const source of sources) {
       await ctx.db.patch(source._id, { status: "uploaded", relevanceScore: undefined });
     }
-    
+
     // Update project counts
     await ctx.db.patch(projectId, {
       requirementCount: 0,
@@ -225,16 +226,18 @@ export const clearExtractionData = mutation({
       progress: 0,
       updatedAt: Date.now(),
     });
-    
-    return { success: true, cleared: {
-      requirements: requirements.length,
-      stakeholders: stakeholders.length,
-      decisions: decisions.length,
-      conflicts: conflicts.length,
-      documents: docs.length,
-      traceabilityLinks: traceLinks.length,
-      timelineEvents: timelineEvents.length,
-    }};
+
+    return {
+      success: true, cleared: {
+        requirements: requirements.length,
+        stakeholders: stakeholders.length,
+        decisions: decisions.length,
+        conflicts: conflicts.length,
+        documents: docs.length,
+        traceabilityLinks: traceLinks.length,
+        timelineEvents: timelineEvents.length,
+      }
+    };
   },
 });
 
@@ -243,63 +246,63 @@ export const remove = mutation({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
     const { projectId } = args;
-    
+
     // Delete all related data
     const sources = await ctx.db.query("sources").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const source of sources) {
       await ctx.db.delete(source._id);
     }
-    
+
     const requirements = await ctx.db.query("requirements").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const req of requirements) {
       await ctx.db.delete(req._id);
     }
-    
+
     const stakeholders = await ctx.db.query("stakeholders").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const stakeholder of stakeholders) {
       await ctx.db.delete(stakeholder._id);
     }
-    
+
     const decisions = await ctx.db.query("decisions").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const decision of decisions) {
       await ctx.db.delete(decision._id);
     }
-    
+
     const conflicts = await ctx.db.query("conflicts").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const conflict of conflicts) {
       await ctx.db.delete(conflict._id);
     }
-    
+
     const docs = await ctx.db.query("documents").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const doc of docs) {
       await ctx.db.delete(doc._id);
     }
-    
+
     const runs = await ctx.db.query("extractionRuns").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const run of runs) {
       await ctx.db.delete(run._id);
     }
-    
+
     const logs = await ctx.db.query("agentLogs").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const log of logs) {
       await ctx.db.delete(log._id);
     }
-    
+
     const messages = await ctx.db.query("chatMessages").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const msg of messages) {
       await ctx.db.delete(msg._id);
     }
-    
+
     const traceabilityLinks = await ctx.db.query("traceabilityLinks").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const link of traceabilityLinks) {
       await ctx.db.delete(link._id);
     }
-    
+
     const timelineEvents = await ctx.db.query("timelineEvents").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect();
     for (const event of timelineEvents) {
       await ctx.db.delete(event._id);
     }
-    
+
     // Finally delete the project itself
     await ctx.db.delete(projectId);
   },

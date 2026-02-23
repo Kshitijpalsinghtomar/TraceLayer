@@ -93,7 +93,8 @@ async function _callAIOnce(
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.3,
+        temperature: 0,
+        seed: 42,
         max_tokens: maxTokens,
         ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
       }),
@@ -118,7 +119,7 @@ async function _callAIOnce(
             },
           ],
           generationConfig: {
-            temperature: 0.3,
+            temperature: 0,
             maxOutputTokens: maxTokens,
             ...(jsonMode
               ? { responseMimeType: "application/json" }
@@ -143,6 +144,7 @@ async function _callAIOnce(
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: maxTokens,
+        temperature: 0,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       }),
@@ -243,10 +245,18 @@ export const runExtractionPipeline = action({
 
       // Get all sources
       const sources: any[] = await ctx.runQuery(api.sources.listByProject, { projectId });
+
+      // Read BRD focus scope from project (if set by user)
+      const projectData: any = await ctx.runQuery(api.projects.get, { projectId });
+      const brdFocus = projectData?.brdFocus || "";
+      const focusContext = brdFocus
+        ? `\n\nFOCUS SCOPE: "${brdFocus}"\nOnly extract information RELEVANT to this specific topic. Ignore content about other unrelated projects, topics, or discussions.\n`
+        : "";
+
       await logMsg(
         "ingestion_agent",
         "processing",
-        `📥 Found ${sources.length} source(s) to process`,
+        `📥 Found ${sources.length} source(s) to process${brdFocus ? ` | Focus: "${brdFocus}"` : " | Full-scope (no focus filter)"}`,
         JSON.stringify(sources.map((s) => ({ name: s.name, type: s.type, words: s.metadata?.wordCount })))
       );
 
@@ -279,7 +289,7 @@ export const runExtractionPipeline = action({
 
         const classifyPrompt = `Analyze this communication and classify its relevance to a business project.
 Rate relevance from 0.0 to 1.0 where 1.0 is highly relevant to business requirements.
-
+${focusContext}
 Return JSON:
 {
   "relevance": <number>,
@@ -292,13 +302,15 @@ Return JSON:
 }
 
 Communication source "${source.name}":
-${source.content.substring(0, 32000)}`;
+${source.content.substring(0, 16000)}`;
 
         const classResult = await callAI(
           apiKey,
           provider,
-          "You are a communication classifier for a requirements intelligence system. " + SOUL_DOCUMENT.substring(0, 800),
-          classifyPrompt
+          "You are a communication classifier for a requirements intelligence system. " + SOUL_DOCUMENT.substring(0, 200),
+          classifyPrompt,
+          true,
+          2048
         );
 
         const classification = safeJsonParse(classResult) as any;
@@ -367,7 +379,7 @@ ${source.content.substring(0, 32000)}`;
           const chunkLabel = chunks.length > 1 ? ` (chunk ${ci + 1}/${chunks.length})` : "";
 
           const reqPrompt = `${EXTRACTION_SPEC}
-
+${focusContext}
 Extract ALL requirements from this communication${chunkLabel}. Be EXTREMELY thorough — capture every system capability, constraint, behavior, quality attribute, business rule, integration need, performance expectation, security requirement, and compliance need mentioned.
 
 Dig deep. Look for:
@@ -403,7 +415,7 @@ ${chunks[ci]}`;
           const reqResult = await callAI(
             apiKey,
             provider,
-            "You are a precision requirements extraction agent. " + SOUL_DOCUMENT.substring(0, 500),
+            "You are a precision requirements extraction agent. " + SOUL_DOCUMENT.substring(0, 300),
             reqPrompt,
             true,
             16384
@@ -506,6 +518,7 @@ ${chunks[ci]}`;
         .substring(0, 60000);
 
       const stakeholderPrompt = `Identify ALL stakeholders mentioned across these communications.
+${focusContext}
 A stakeholder is anyone who proposes, approves, influences, or is affected by requirements.
 
 Be thorough — look for:
@@ -537,7 +550,7 @@ ${allSourceContent}`;
       const stakeholderResult = await callAI(
         apiKey,
         provider,
-        "You are a stakeholder intelligence agent. " + SOUL_DOCUMENT.substring(0, 500),
+        "You are a stakeholder intelligence agent. " + SOUL_DOCUMENT.substring(0, 200),
         stakeholderPrompt,
         true,
         12288
@@ -599,6 +612,7 @@ ${allSourceContent}`;
 
       const decisionPrompt = `Extract ALL confirmed decisions from these communications.
 A decision is a confirmed architectural, functional, business, or technical choice.
+${focusContext}
 
 Be thorough — look for:
 - Explicit decisions ("we decided", "agreed to", "approved")
@@ -632,7 +646,7 @@ ${allSourceContent}`;
       const decisionResult = await callAI(
         apiKey,
         provider,
-        "You are a decision intelligence agent. " + SOUL_DOCUMENT.substring(0, 500),
+        "You are a decision intelligence agent. " + SOUL_DOCUMENT.substring(0, 200),
         decisionPrompt,
         true,
         12288
@@ -706,6 +720,8 @@ ${allSourceContent}`;
         decisionsFound: decCounter,
       });
       await ctx.runMutation(api.projects.update, { projectId, progress: 65 });
+
+      await sleep(2000); // Inter-phase cooling
 
       // ═══════════════════════════════════════════════════════════════════════
       // PHASE 6: TIMELINE EXTRACTION
@@ -783,58 +799,83 @@ ${allSourceContent}`;
       const allReqs: any[] = await ctx.runQuery(api.requirements.listByProject, { projectId });
 
       if (allReqs.length >= 2) {
-        const conflictPrompt = `Analyze these requirements for conflicts, contradictions, or incompatibilities.
+        const conflictPrompt = `Analyze these ${allReqs.length} requirements THOROUGHLY for ALL types of conflicts. Be aggressive — most real projects have significant conflicts.
+${focusContext}
 
 Requirements:
-${allReqs.map((r) => `${r.requirementId}: ${r.title} — ${r.description}`).join("\n")}
+${allReqs.map((r) => `${r.requirementId} [${r.category}/${r.priority}]: ${r.title} — ${r.description}`).join("\n")}
+
+Look for these conflict types:
+1. DIRECT CONTRADICTIONS: Requirements that explicitly oppose each other
+2. RESOURCE CONFLICTS: Requirements competing for the same budget, team, or timeline
+3. PRIORITY CONFLICTS: High-priority requirements that block each other
+4. TECHNICAL INCOMPATIBILITIES: Requirements needing incompatible tech approaches
+5. SCOPE CONFLICTS: Requirements that collectively exceed reasonable project scope
+6. STAKEHOLDER DISAGREEMENTS: Requirements from different stakeholders that clash
+7. TIMELINE CONFLICTS: Requirements with incompatible delivery schedules
+8. DEPENDENCY CONFLICTS: Requirements where fulfilling one makes another harder
 
 Return JSON:
 {
   "conflicts": [
     {
-      "title": "<conflict title>",
-      "description": "<what conflicts>",
+      "title": "<clear conflict title>",
+      "description": "<detailed explanation of the conflict and its impact>",
       "severity": "critical" | "major" | "minor",
       "requirement_ids": ["<REQ-xxx>", "<REQ-yyy>"],
-      "explanation": "<why these conflict>"
+      "explanation": "<why these conflict and what's at stake>",
+      "suggested_resolution": "<how to resolve this conflict>"
     }
   ]
 }
 
-If no conflicts found, return { "conflicts": [] }`;
+IMPORTANT: Return AT LEAST 3-5 conflicts for a typical project. Real projects ALWAYS have conflicts.
+If no genuine conflicts exist, return { "conflicts": [] }`;
 
         const conflictResult = await callAI(
           apiKey,
           provider,
-          "You are a conflict detection agent. Identify contradictions between requirements.",
-          conflictPrompt
+          "You are a conflict detection agent. Be thorough — identify ALL contradictions, tensions, and incompatibilities between requirements. Err on the side of finding more conflicts rather than fewer.",
+          conflictPrompt,
+          true,
+          8192
         );
 
         const conflictData = safeJsonParse(conflictResult) as any;
         const conflicts = conflictData.conflicts || [];
 
         for (const conflict of conflicts) {
-          // Find matching requirement IDs
-          const matchingReqIds = allReqs
+          // Match AI-returned requirement IDs to DB records
+          let matchingReqIds = allReqs
             .filter((r) => (conflict.requirement_ids || []).includes(r.requirementId))
             .map((r) => r._id);
 
-          if (matchingReqIds.length >= 2) {
-            await ctx.runMutation(api.conflicts.store, {
-              projectId,
-              conflictId: `CON-${String(conflicts.indexOf(conflict) + 1).padStart(3, "0")}`,
-              title: conflict.title,
-              description: conflict.description + " | " + (conflict.explanation || ""),
-              severity: conflict.severity || "minor",
-              requirementIds: matchingReqIds,
-            });
-
-            await logMsg(
-              "conflict_agent",
-              "warning",
-              `  ⚠️ ${conflict.severity?.toUpperCase()}: "${conflict.title}" — ${(conflict.requirement_ids || []).join(" vs ")}`,
-            );
+          // Fallback: if no exact match found, pick the 2 most relevant requirements by keyword overlap
+          if (matchingReqIds.length < 1) {
+            const conflictWords = (conflict.title + " " + conflict.description).toLowerCase().split(/\s+/);
+            const scored = allReqs.map((r) => {
+              const reqWords = (r.title + " " + r.description).toLowerCase().split(/\s+/);
+              const score = reqWords.filter((w: string) => w.length > 3 && conflictWords.includes(w)).length;
+              return { req: r, score };
+            }).sort((a, b) => b.score - a.score);
+            matchingReqIds = scored.slice(0, 2).map((s) => s.req._id);
           }
+
+          // Store conflict — don't silently drop valid conflicts
+          const storedConflictId = await ctx.runMutation(api.conflicts.store, {
+            projectId,
+            conflictId: `CON-${String(conflicts.indexOf(conflict) + 1).padStart(3, "0")}`,
+            title: conflict.title,
+            description: conflict.description + (conflict.suggested_resolution ? " | Resolution: " + conflict.suggested_resolution : "") + (conflict.explanation ? " | " + conflict.explanation : ""),
+            severity: conflict.severity || "minor",
+            requirementIds: matchingReqIds.length >= 2 ? matchingReqIds : matchingReqIds.length === 1 ? [matchingReqIds[0], matchingReqIds[0]] : allReqs.slice(0, 2).map((r) => r._id),
+          });
+
+          await logMsg(
+            "conflict_agent",
+            "warning",
+            `  ⚠️ ${conflict.severity?.toUpperCase()}: "${conflict.title}" — ${(conflict.requirement_ids || []).join(" vs ")}`,
+          );
         }
 
         if (conflicts.length === 0) {
@@ -1032,10 +1073,8 @@ If no conflicts found, return { "conflicts": [] }`;
         ? (updatedReqs.reduce((sum: number, r: any) => sum + r.confidenceScore, 0) / updatedReqs.length)
         : 0;
 
-      // Include source content snippets for context
-      const sourceContentSnippets = sources.map(s =>
-        `--- ${s.name} (${s.type}) ---\n${s.content.substring(0, 15000)}`
-      ).join("\n\n").substring(0, 50000);
+      // NOTE: Source content is NOT re-sent here to save tokens.
+      // The BRD is generated purely from the extracted intelligence above.
 
       const brdPrompt = `${BRD_TEMPLATE}
 
@@ -1064,9 +1103,6 @@ ${decisionsSummary || "No decisions identified."}
 
 CONFLICTS DETECTED (${brdConflicts.length} total):
 ${conflictsSummary || "No conflicts detected."}
-
-SOURCE CONTENT (for deeper context):
-${sourceContentSnippets}
 
 ========== END DATA ==========
 
