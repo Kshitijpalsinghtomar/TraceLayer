@@ -3,7 +3,6 @@ import { LandingPage } from './components/LandingPage';
 import { Layout } from './components/Layout';
 import { DashboardLive } from './components/DashboardLive';
 import { ProjectWorkspace } from './components/ProjectWorkspace';
-import { AgentPipelineView } from './components/AgentPipelineView';
 import { BRDViewer } from './components/BRDViewer';
 import { NewProject } from './components/NewProject';
 import { ProjectsListView } from './components/ProjectsListView';
@@ -17,7 +16,6 @@ import { DecisionsView } from './components/DecisionsView';
 import { SourcesView } from './components/SourcesView';
 import { SearchView } from './components/SearchView';
 import { ProfileView } from './components/ProfileView';
-import { ControlCenterPage } from './components/ControlCenterPage';
 import { AdminPage } from './components/AdminPage';
 import { ConflictResolutionView } from './components/ConflictResolutionView';
 import { SharedBRDView } from './components/SharedBRDView';
@@ -39,8 +37,6 @@ export const router = createBrowserRouter([
       { path: 'projects', Component: ProjectsListView },
       { path: 'projects/new', Component: NewProject },
       { path: 'projects/:projectId', Component: ProjectWorkspace },
-      { path: 'projects/:projectId/pipeline', Component: AgentPipelineView },
-      { path: 'projects/:projectId/controls', Component: ControlCenterPage },
       { path: 'projects/:projectId/brd', Component: BRDViewer },
       { path: 'projects/:projectId/graph', Component: GraphExplorer },
       { path: 'projects/:projectId/analytics', Component: AnalyticsView },

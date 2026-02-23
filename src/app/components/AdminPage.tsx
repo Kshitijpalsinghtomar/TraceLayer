@@ -162,11 +162,10 @@ export function AdminPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] text-left transition-all duration-150 ${
-                activeTab === tab.id
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] text-left transition-all duration-150 ${activeTab === tab.id
                   ? 'bg-primary/10 text-primary font-medium'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-              }`}
+                }`}
             >
               <tab.icon className="w-4 h-4 shrink-0" />
               {tab.label}
@@ -237,17 +236,16 @@ function SystemOverview() {
           AI Provider Status
         </h3>
         <div className="space-y-3">
-          {['openai', 'gemini', 'anthropic'].map((provider) => {
+          {['openrouter', 'openai', 'gemini', 'anthropic'].map((provider) => {
             const key = apiKeys?.find((k) => k.provider === provider);
             return (
               <div key={provider} className="flex items-center justify-between py-2.5 px-4 rounded-xl bg-muted/30">
                 <div className="flex items-center gap-3">
                   <div className={`w-2 h-2 rounded-full ${key ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
-                  <span className="text-[14px] font-medium capitalize">{provider === 'openai' ? 'OpenAI' : provider === 'gemini' ? 'Google Gemini' : 'Anthropic'}</span>
+                  <span className="text-[14px] font-medium capitalize">{provider === 'openai' ? 'OpenAI' : provider === 'gemini' ? 'Google Gemini' : provider === 'openrouter' ? 'OpenRouter (Free)' : 'Anthropic'}</span>
                 </div>
-                <span className={`text-[12px] px-2.5 py-1 rounded-full ${
-                  key ? 'bg-emerald-50 text-emerald-700' : 'bg-muted text-muted-foreground'
-                }`}>
+                <span className={`text-[12px] px-2.5 py-1 rounded-full ${key ? 'bg-emerald-50 text-emerald-700' : 'bg-muted text-muted-foreground'
+                  }`}>
                   {key ? `Connected (${key.keyPreview})` : 'Not configured'}
                 </span>
               </div>
@@ -315,12 +313,13 @@ function APIKeysManager() {
   const [saving, setSaving] = useState<string | null>(null);
 
   const providers = [
+    { id: 'openrouter' as const, name: 'OpenRouter', model: 'Free Models (Llama 4, DeepSeek)', placeholder: 'sk-or-...', color: '#22C55E' },
     { id: 'openai' as const, name: 'OpenAI', model: 'GPT-4o', placeholder: 'sk-...', color: '#10A37F' },
     { id: 'gemini' as const, name: 'Google Gemini', model: 'Gemini 2.0 Flash', placeholder: 'AIza...', color: '#4285F4' },
     { id: 'anthropic' as const, name: 'Anthropic', model: 'Claude 3.5 Sonnet', placeholder: 'sk-ant-...', color: '#D97757' },
   ];
 
-  const handleSave = async (provider: 'openai' | 'gemini' | 'anthropic') => {
+  const handleSave = async (provider: 'openai' | 'gemini' | 'anthropic' | 'openrouter') => {
     const key = newKeys[provider];
     if (!key?.trim()) return;
     setSaving(provider);
@@ -514,11 +513,10 @@ function PipelineLogs() {
             <button
               key={level}
               onClick={() => setLevelFilter(level)}
-              className={`px-3 py-1.5 rounded-lg text-[12px] capitalize transition-all ${
-                levelFilter === level
+              className={`px-3 py-1.5 rounded-lg text-[12px] capitalize transition-all ${levelFilter === level
                   ? 'bg-card shadow-sm text-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground'
-              }`}
+                }`}
             >
               {level}
             </button>
@@ -567,6 +565,7 @@ function SystemConfig() {
                 onChange={(e) => setSetting({ key: 'default_provider', value: e.target.value })}
                 className="px-3 py-2 rounded-lg border border-border/60 text-[13px] bg-background"
               >
+                <option value="openrouter">OpenRouter (Free)</option>
                 <option value="openai">OpenAI (GPT-4o)</option>
                 <option value="gemini">Gemini 2.0 Flash</option>
                 <option value="anthropic">Claude 3.5 Sonnet</option>
