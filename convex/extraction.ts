@@ -2,7 +2,7 @@
 
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { SOUL_DOCUMENT, EXTRACTION_SPEC, BRD_TEMPLATE } from "./agentKnowledge";
 
 // ─── Helper: Call AI Provider ────────────────────────────────────────────────
@@ -121,12 +121,21 @@ function safeJsonParse(text: string): unknown {
 export const runExtractionPipeline = action({
   args: {
     projectId: v.id("projects"),
-    provider: v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic")),
-    apiKey: v.string(),
-    regenerate: v.optional(v.boolean()), // If true, clear existing data before running
+    provider: v.optional(v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic"))),
+    apiKey: v.optional(v.string()), // deprecated — ignored, resolved server-side
+    regenerate: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<any> => {
-    const { projectId, provider, apiKey, regenerate } = args;
+    const { projectId, regenerate } = args;
+
+    // Resolve API key server-side (never trust client-provided keys)
+    const resolved = await ctx.runQuery(internal.apiKeys.resolveProviderAndKey, {
+      preferredProvider: args.provider,
+    });
+    if (!resolved) {
+      throw new Error("No API key configured. An admin must configure an AI provider key in Settings.");
+    }
+    const { provider, apiKey } = resolved;
 
     // ─── CHECK 1: Is pipeline already running? ─────────────────────────────
     const runs = await ctx.runQuery(api.pipeline.getLatestRun, { projectId });
@@ -262,8 +271,31 @@ ${source.content.substring(0, 32000)}`;
       });
       await logMsg("requirement_agent", "processing", "⚙️ Extracting requirements from classified sources...");
 
-      let reqCounter = 0;
+      // Query existing requirements to start counter after highest existing ID
+      // This prevents duplicate REQ-xxx IDs when running pipeline multiple times
+      const existingReqs = await ctx.runQuery(api.requirements.listByProject, { projectId });
+      let reqCounter = existingReqs.reduce((max: number, r: any) => {
+        const num = parseInt(r.requirementId?.replace("REQ-", "") || "0", 10);
+        return num > max ? num : max;
+      }, 0);
       const allRequirementIds: string[] = [];
+
+      // Build a set of normalized titles from existing requirements for cross-source dedup
+      const existingTitleWords = new Map<string, string>(); // normalized key → existing requirementId
+      for (const r of existingReqs) {
+        const key = (r.title || "").toLowerCase().trim().replace(/[^a-z0-9\s]/g, "");
+        if (key) existingTitleWords.set(key, r.requirementId);
+      }
+
+      // Helper: check if two titles are similar (>70% word overlap)
+      const isSimilarTitle = (a: string, b: string): boolean => {
+        const wordsA = new Set(a.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean));
+        const wordsB = new Set(b.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean));
+        if (wordsA.size === 0 || wordsB.size === 0) return false;
+        const intersection = [...wordsA].filter(w => wordsB.has(w)).length;
+        const minSize = Math.min(wordsA.size, wordsB.size);
+        return intersection / minSize >= 0.7;
+      };
 
       for (const source of sources) {
         await ctx.runMutation(api.sources.updateStatus, {
@@ -374,8 +406,27 @@ ${chunks[ci]}`;
         );
 
         for (const req of uniqueReqs) {
+          const title = req.title || "Untitled Requirement";
+
+          // Cross-source deduplication: skip if similar title already exists
+          const isDuplicate = [...existingTitleWords.keys()].some(
+            (existingTitle) => isSimilarTitle(title, existingTitle)
+          );
+          if (isDuplicate) {
+            await logMsg(
+              "requirement_agent",
+              "info",
+              `  ⏭️ Skipped duplicate: "${title}" (similar requirement already exists)`,
+            );
+            continue;
+          }
+
           reqCounter++;
           const reqId = `REQ-${String(reqCounter).padStart(3, "0")}`;
+
+          // Track this new title for dedup against subsequent requirements
+          const normalizedKey = title.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "");
+          if (normalizedKey) existingTitleWords.set(normalizedKey, reqId);
 
           const storedId = await ctx.runMutation(api.requirements.store, {
             projectId,

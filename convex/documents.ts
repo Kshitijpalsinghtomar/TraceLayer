@@ -7,6 +7,7 @@ export const store = mutation({
     projectId: v.id("projects"),
     type: v.union(v.literal("brd"), v.literal("prd"), v.literal("traceability_matrix")),
     content: v.string(),
+    parentDocumentId: v.optional(v.id("documents")),
     generatedFrom: v.object({
       requirementCount: v.number(),
       sourceCount: v.number(),
@@ -37,6 +38,7 @@ export const store = mutation({
       type: args.type,
       version,
       content: args.content,
+      parentDocumentId: args.parentDocumentId,
       generatedAt: Date.now(),
       generatedFrom: args.generatedFrom,
       status: "ready",
@@ -89,10 +91,62 @@ export const updateContent = mutation({
   args: {
     documentId: v.id("documents"),
     content: v.string(),
+    authProviderId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Ownership check via parent project
+    const doc = await ctx.db.get(args.documentId);
+    if (!doc) throw new Error("Document not found");
+    if (args.authProviderId) {
+      const project = await ctx.db.get(doc.projectId);
+      if (project?.userId) {
+        const caller = await ctx.db
+          .query("users")
+          .withIndex("by_auth_provider_id", (q) => q.eq("authProviderId", args.authProviderId!))
+          .unique();
+        if (!caller) throw new Error("Unauthorized");
+        if (caller._id !== project.userId && caller.role !== "admin") {
+          throw new Error("Unauthorized: you do not own this project");
+        }
+      }
+    }
+
     await ctx.db.patch(args.documentId, {
       content: args.content,
     });
+  },
+});
+
+// ─── Get Document Lineage (walk up the parent chain) ─────────────────────────
+export const getLineage = query({
+  args: { documentId: v.id("documents") },
+  handler: async (ctx, args) => {
+    const chain: any[] = [];
+    let currentId: string | null = args.documentId;
+    const maxDepth = 20; // safety limit
+    let depth = 0;
+
+    while (currentId && depth < maxDepth) {
+      const docRecord = await ctx.db.get(currentId as any);
+      if (!docRecord || docRecord._id === undefined) break;
+      chain.unshift(docRecord); // prepend — oldest ancestor first
+      // Navigate to parent (documents table has parentDocumentId)
+      const asDoc = docRecord as { parentDocumentId?: string | null;[key: string]: any };
+      currentId = asDoc.parentDocumentId ?? null;
+      depth++;
+    }
+
+    return chain;
+  },
+});
+
+// ─── Get Children Documents ──────────────────────────────────────────────────
+export const getChildren = query({
+  args: { documentId: v.id("documents") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("documents")
+      .withIndex("by_parent", (q) => q.eq("parentDocumentId", args.documentId))
+      .collect();
   },
 });

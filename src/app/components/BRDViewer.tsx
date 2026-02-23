@@ -133,6 +133,16 @@ function normalizeBRD(raw: Record<string, unknown>): BRDContent {
     if (scope.in_scope && !scope.inScope) scope.inScope = scope.in_scope;
     if (scope.out_of_scope && !scope.outOfScope) scope.outOfScope = scope.out_of_scope;
   }
+
+  // Coerce businessObjectives to array — pipeline may return string or object
+  if (out.businessObjectives && !Array.isArray(out.businessObjectives)) {
+    if (typeof out.businessObjectives === "string") {
+      out.businessObjectives = [out.businessObjectives];
+    } else if (typeof out.businessObjectives === "object") {
+      out.businessObjectives = [out.businessObjectives];
+    }
+  }
+
   return out as BRDContent;
 }
 
@@ -215,11 +225,12 @@ export function BRDViewer() {
   const updateContent = useMutation(api.documents.updateContent);
   const runPipeline = useAction(api.extraction.runExtractionPipeline);
   const syncAndRun = useAction(api.integrationSync.syncAndRunPipeline);
+  const batchUpdateStatus = useMutation(api.requirements.batchUpdateStatus);
 
   // Fetch stored API keys for each provider
-  const geminiKey = useQuery(api.apiKeys.getKeyForProvider, { provider: "gemini" });
-  const openaiKey = useQuery(api.apiKeys.getKeyForProvider, { provider: "openai" });
-  const anthropicKey = useQuery(api.apiKeys.getKeyForProvider, { provider: "anthropic" });
+  const hasGeminiKey = useQuery(api.apiKeys.hasKeyForProvider, { provider: "gemini" });
+  const hasOpenaiKey = useQuery(api.apiKeys.hasKeyForProvider, { provider: "openai" });
+  const hasAnthropicKey = useQuery(api.apiKeys.hasKeyForProvider, { provider: "anthropic" });
   const connectedIntegrations = useQuery(api.integrations.listConnected, pid ? {} : "skip");
 
   const [activeSection, setActiveSection] = useState("full-document");
@@ -232,6 +243,8 @@ export function BRDViewer() {
   const [isSaving, setIsSaving] = useState(false);
   const [regenStatus, setRegenStatus] = useState<{ type: "success" | "error" | "info"; msg: string } | null>(null);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
+  const [checkedReqIds, setCheckedReqIds] = useState<Set<string>>(new Set());
+  const [batchUpdating, setBatchUpdating] = useState(false);
 
   // Pipeline running detection — derived from server state (survives refresh)
   const isPipelineRunning = latestRun && !["completed", "failed", "cancelled"].includes(latestRun.status);
@@ -293,14 +306,14 @@ export function BRDViewer() {
   const handleRegenerate = useCallback(() => {
     if (!pid || isPipelineRunning) return;
 
-    // Find the best available key (match AIChat's pattern)
+    // Find the best available provider (keys resolve server-side)
     let provider: "gemini" | "openai" | "anthropic" = "gemini";
-    let apiKey = geminiKey;
-    if (!apiKey && openaiKey) { provider = "openai"; apiKey = openaiKey; }
-    if (!apiKey && anthropicKey) { provider = "anthropic"; apiKey = anthropicKey; }
+    if (!hasGeminiKey && hasOpenaiKey) provider = "openai";
+    if (!hasGeminiKey && !hasOpenaiKey && hasAnthropicKey) provider = "anthropic";
 
-    if (!apiKey) {
-      setRegenStatus({ type: "error", msg: "No API key configured. Go to Settings → AI Keys to add one." });
+    const hasAnyKey = hasGeminiKey || hasOpenaiKey || hasAnthropicKey;
+    if (!hasAnyKey) {
+      setRegenStatus({ type: "error", msg: "No API key configured. Ask an admin to configure AI provider keys." });
       setTimeout(() => setRegenStatus(null), 6000);
       return;
     }
@@ -312,8 +325,8 @@ export function BRDViewer() {
 
     const hasIntegrations = connectedIntegrations && connectedIntegrations.length > 0;
     const pipelineCall = hasIntegrations
-      ? syncAndRun({ projectId: pid, provider, apiKey, regenerate: true })
-      : runPipeline({ projectId: pid, provider, apiKey, regenerate: true });
+      ? syncAndRun({ projectId: pid, provider, regenerate: true })
+      : runPipeline({ projectId: pid, provider, regenerate: true });
 
     pipelineCall
       .catch((e: any) => {
@@ -325,7 +338,7 @@ export function BRDViewer() {
     setTimeout(() => {
       setRegenStatus((prev) => prev?.type === "info" ? null : prev);
     }, 3000);
-  }, [pid, isPipelineRunning, geminiKey, openaiKey, anthropicKey, connectedIntegrations, runPipeline, syncAndRun]);
+  }, [pid, isPipelineRunning, hasGeminiKey, hasOpenaiKey, hasAnthropicKey, connectedIntegrations, runPipeline, syncAndRun]);
 
   // Get BRD versions only
   const brdDocs = useMemo(() => {
@@ -429,13 +442,12 @@ export function BRDViewer() {
                   return (
                     <div
                       key={key}
-                      className={`flex items-center gap-2 px-3 py-1 rounded-md text-[11px] transition-colors ${
-                        isActive
-                          ? "bg-primary/10 text-primary font-medium"
-                          : isDone
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-muted-foreground/50"
-                      }`}
+                      className={`flex items-center gap-2 px-3 py-1 rounded-md text-[11px] transition-colors ${isActive
+                        ? "bg-primary/10 text-primary font-medium"
+                        : isDone
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-muted-foreground/50"
+                        }`}
                     >
                       {isDone ? (
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
@@ -451,11 +463,10 @@ export function BRDViewer() {
               </div>
 
               {regenStatus && (
-                <div className={`mx-auto max-w-xs px-3 py-1.5 rounded-lg text-[11px] ${
-                  regenStatus.type === "error"
-                    ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
-                    : "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
-                }`}>
+                <div className={`mx-auto max-w-xs px-3 py-1.5 rounded-lg text-[11px] ${regenStatus.type === "error"
+                  ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
+                  : "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
+                  }`}>
                   {regenStatus.msg}
                 </div>
               )}
@@ -546,11 +557,10 @@ export function BRDViewer() {
                             {idx === 0 && (
                               <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-semibold">Latest</span>
                             )}
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
-                              doc.status === "ready"
-                                ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
-                                : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
-                            }`}>
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${doc.status === "ready"
+                              ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
+                              : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                              }`}>
                               {doc.status}
                             </span>
                           </div>
@@ -574,8 +584,8 @@ export function BRDViewer() {
             <button
               onClick={() => setActiveSection("full-document")}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] text-left transition-all duration-150 font-medium ${activeSection === "full-document"
-                  ? "bg-primary/15 text-primary border border-primary/20"
-                  : "text-foreground hover:bg-muted hover:text-foreground border border-transparent"
+                ? "bg-primary/15 text-primary border border-primary/20"
+                : "text-foreground hover:bg-muted hover:text-foreground border border-transparent"
                 }`}
             >
               <FileStack className="w-4 h-4 shrink-0" />
@@ -593,8 +603,8 @@ export function BRDViewer() {
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] text-left transition-all duration-150 ${activeSection === section.id
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
               >
                 <section.icon className="w-4 h-4 shrink-0" />
@@ -613,8 +623,8 @@ export function BRDViewer() {
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] text-left transition-all duration-150 ${activeSection === section.id
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
               >
                 <section.icon className="w-4 h-4 shrink-0" />
@@ -703,13 +713,12 @@ export function BRDViewer() {
 
             {/* Status feedback toast */}
             {regenStatus && (
-              <div className={`mt-1 px-3 py-1.5 rounded-lg text-[11px] ${
-                regenStatus.type === "success"
-                  ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/30"
-                  : regenStatus.type === "error"
-                    ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-200/50 dark:border-red-800/30"
-                    : "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/30"
-              }`}>
+              <div className={`mt-1 px-3 py-1.5 rounded-lg text-[11px] ${regenStatus.type === "success"
+                ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/30"
+                : regenStatus.type === "error"
+                  ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-200/50 dark:border-red-800/30"
+                  : "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/30"
+                }`}>
                 {regenStatus.msg}
               </div>
             )}
@@ -746,7 +755,7 @@ export function BRDViewer() {
             {/* ─── FULL DOCUMENT COMPILATION ──────────────────────── */}
             {activeSection === "full-document" && (
               <SectionWrapper key="full-document">
-              <div className="mb-10 pb-8 border-b border-border/30">
+                <div className="mb-10 pb-8 border-b border-border/30">
                   <div className="flex items-center gap-2 mb-3">
                     <Sparkles className="w-4 h-4 text-primary/60" />
                     <span className="text-[11px] uppercase tracking-widest text-primary/60 font-semibold">AI-Generated Document</span>
@@ -924,17 +933,83 @@ export function BRDViewer() {
                       <CheckSquare className="w-5 h-5" />
                       7. Requirements ({requirements.length})
                     </h2>
+
+                    {/* Batch Action Bar */}
+                    {checkedReqIds.size > 0 && (
+                      <div className="mb-3 flex items-center gap-3 bg-primary/5 border border-primary/20 rounded-xl px-4 py-2.5 animate-in fade-in">
+                        <span className="text-[12px] font-medium text-primary">{checkedReqIds.size} selected</span>
+                        <select
+                          disabled={batchUpdating}
+                          className="text-[12px] bg-card border border-border/50 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                          defaultValue=""
+                          onChange={async (e) => {
+                            const status = e.target.value as any;
+                            if (!status) return;
+                            setBatchUpdating(true);
+                            try {
+                              await batchUpdateStatus({ ids: Array.from(checkedReqIds) as any, status });
+                              setCheckedReqIds(new Set());
+                            } catch (_) { /* swallow */ }
+                            setBatchUpdating(false);
+                            e.target.value = "";
+                          }}
+                        >
+                          <option value="" disabled>Set status…</option>
+                          <option value="discovered">Discovered</option>
+                          <option value="pending">Pending</option>
+                          <option value="under_review">Under Review</option>
+                          <option value="confirmed">Confirmed</option>
+                          <option value="rejected">Rejected</option>
+                          <option value="deferred">Deferred</option>
+                        </select>
+                        <button onClick={() => setCheckedReqIds(new Set())} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                          Clear
+                        </button>
+                        {batchUpdating && <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
+                      </div>
+                    )}
+
                     <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
-                      <div className="grid grid-cols-[70px_1fr_75px_85px_60px] gap-2 px-4 py-2 bg-muted/30 border-b border-border/50 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-                        <span>ID</span><span>Title</span><span>Priority</span><span>Category</span><span>Conf.</span>
+                      <div className="grid grid-cols-[32px_70px_1fr_75px_85px_70px_60px] gap-2 px-4 py-2 bg-muted/30 border-b border-border/50 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                        <span>
+                          <input
+                            type="checkbox"
+                            className="accent-primary w-3.5 h-3.5 rounded"
+                            checked={checkedReqIds.size === requirements.length && requirements.length > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCheckedReqIds(new Set((requirements as any[]).map((r: any) => r._id)));
+                              } else {
+                                setCheckedReqIds(new Set());
+                              }
+                            }}
+                          />
+                        </span>
+                        <span>ID</span><span>Title</span><span>Priority</span><span>Category</span><span>Status</span><span>Conf.</span>
                       </div>
                       <div className="divide-y divide-border/30 max-h-[400px] overflow-y-auto">
                         {(requirements as any[]).map((req: any) => (
-                          <div key={req._id} className="grid grid-cols-[70px_1fr_75px_85px_60px] gap-2 px-4 py-2.5 text-[12px] items-center hover:bg-muted/20">
+                          <div key={req._id} className={`grid grid-cols-[32px_70px_1fr_75px_85px_70px_60px] gap-2 px-4 py-2.5 text-[12px] items-center hover:bg-muted/20 ${checkedReqIds.has(req._id) ? 'bg-primary/[0.03]' : ''}`}>
+                            <span>
+                              <input
+                                type="checkbox"
+                                className="accent-primary w-3.5 h-3.5 rounded"
+                                checked={checkedReqIds.has(req._id)}
+                                onChange={(e) => {
+                                  setCheckedReqIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(req._id);
+                                    else next.delete(req._id);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            </span>
                             <span className="font-mono text-[10px] text-muted-foreground">{req.requirementId}</span>
                             <span className="truncate font-medium">{req.title}</span>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full w-fit ${priorityConfig[req.priority]?.className || ''}`}>{priorityConfig[req.priority]?.label || req.priority}</span>
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full w-fit capitalize" style={{ backgroundColor: (categoryConfig[req.category]?.color || "#64748B") + "15", color: categoryConfig[req.category]?.color || "#64748B" }}>{categoryConfig[req.category]?.label || req.category}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full w-fit ${statusConfig[req.status]?.className || 'bg-muted text-muted-foreground'}`}>{statusConfig[req.status]?.label || req.status}</span>
                             <span className="text-[11px] text-muted-foreground">{Math.round(req.confidenceScore * 100)}%</span>
                           </div>
                         ))}
@@ -2089,11 +2164,10 @@ function RequirementDetailPanel({ requirement, onClose, sources }: { requirement
             <label className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-3 block">Source Evidence</label>
             <button
               onClick={() => linkedSource && setShowSourceDrawer(true)}
-              className={`w-full text-left bg-muted/30 rounded-xl border border-border/30 p-4 transition-all ${
-                linkedSource
-                  ? "hover:border-primary/30 hover:bg-primary/[0.03] cursor-pointer group"
-                  : ""
-              }`}
+              className={`w-full text-left bg-muted/30 rounded-xl border border-border/30 p-4 transition-all ${linkedSource
+                ? "hover:border-primary/30 hover:bg-primary/[0.03] cursor-pointer group"
+                : ""
+                }`}
             >
               <div className="border-l-2 border-primary/30 pl-4 py-1">
                 <p className="text-[13px] leading-relaxed text-foreground/80 italic">&ldquo;{requirement.sourceExcerpt}&rdquo;</p>
@@ -2302,12 +2376,11 @@ function ConflictCard({ conflict, requirements }: { conflict: any; requirements:
               <div key={req._id} className="flex items-center gap-2 bg-card rounded-lg px-3 py-2 border border-border">
                 <span className="text-[11px] font-mono text-muted-foreground shrink-0">{req.requirementId}</span>
                 <span className="text-[12px] text-foreground/80 truncate">{req.title}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-auto shrink-0 ${
-                  req.priority === 'critical' ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400' :
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-auto shrink-0 ${req.priority === 'critical' ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400' :
                   req.priority === 'high' ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400' :
-                  req.priority === 'medium' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400' :
-                  'bg-muted text-muted-foreground'
-                }`}>{req.priority}</span>
+                    req.priority === 'medium' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400' :
+                      'bg-muted text-muted-foreground'
+                  }`}>{req.priority}</span>
               </div>
             ))}
           </div>

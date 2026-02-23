@@ -17,6 +17,7 @@
  */
 import { useAction, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useLocation, useNavigate } from "react-router";
@@ -100,8 +101,7 @@ function getPageContext(pathname: string): string {
   if (pathname.includes("/brd")) return "BRD Viewer";
   if (pathname.includes("/graph")) return "Knowledge Graph";
   if (pathname.includes("/analytics")) return "Analytics";
-  if (pathname.includes("/pipeline")) return "Pipeline Logs";
-  if (pathname.includes("/controls")) return "Control Center";
+
   if (pathname.includes("/projects/new")) return "New Project";
   if (pathname.includes("/projects/")) return "Project Workspace";
   if (pathname === "/integrations") return "Integrations";
@@ -189,20 +189,18 @@ function CopilotMessageBubble({ message }: { message: CopilotMessage }) {
       className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}
     >
       {/* Avatar */}
-      <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${
-        isUser
-          ? "bg-primary/15 text-primary"
-          : "bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm"
-      }`}>
+      <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${isUser
+        ? "bg-primary/15 text-primary"
+        : "bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm"
+        }`}>
         {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
       </div>
 
       {/* Bubble */}
-      <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[12.5px] leading-relaxed ${
-        isUser
-          ? "bg-primary text-primary-foreground ml-auto rounded-tr-md"
-          : "bg-muted/60 text-foreground border border-border/40 rounded-tl-md"
-      }`}>
+      <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[12.5px] leading-relaxed ${isUser
+        ? "bg-primary text-primary-foreground ml-auto rounded-tr-md"
+        : "bg-muted/60 text-foreground border border-border/40 rounded-tl-md"
+        }`}>
         {isUser ? (
           <p>{message.content}</p>
         ) : (
@@ -231,27 +229,26 @@ export function AICopilot() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Query stored API keys
-  const storedKeyGemini = useQuery(api.apiKeys.getKeyForProvider, { provider: "gemini" });
-  const storedKeyOpenai = useQuery(api.apiKeys.getKeyForProvider, { provider: "openai" });
-  const storedKeyAnthropic = useQuery(api.apiKeys.getKeyForProvider, { provider: "anthropic" });
+  // Check API key availability (keys resolve server-side, frontend only checks existence)
+  const hasKeyGemini = useQuery(api.apiKeys.hasKeyForProvider, { provider: "gemini" });
+  const hasKeyOpenai = useQuery(api.apiKeys.hasKeyForProvider, { provider: "openai" });
+  const hasKeyAnthropic = useQuery(api.apiKeys.hasKeyForProvider, { provider: "anthropic" });
 
   const copilotAction = useAction(api.copilot.globalChat);
+  const projects = useQuery(api.projects.list) ?? [];
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
 
   // Auto-select provider with available key
   useEffect(() => {
-    if (storedKeyGemini) setProvider("gemini");
-    else if (storedKeyOpenai) setProvider("openai");
-    else if (storedKeyAnthropic) setProvider("anthropic");
-  }, [storedKeyGemini, storedKeyOpenai, storedKeyAnthropic]);
+    if (hasKeyGemini) setProvider("gemini");
+    else if (hasKeyOpenai) setProvider("openai");
+    else if (hasKeyAnthropic) setProvider("anthropic");
+  }, [hasKeyGemini, hasKeyOpenai, hasKeyAnthropic]);
 
-  // Get API key for current provider
-  const getApiKey = useCallback((): string | null => {
-    if (provider === "gemini") return storedKeyGemini || null;
-    if (provider === "openai") return storedKeyOpenai || null;
-    if (provider === "anthropic") return storedKeyAnthropic || null;
-    return null;
-  }, [provider, storedKeyGemini, storedKeyOpenai, storedKeyAnthropic]);
+  // Check key availability for current provider
+  const hasKey = provider === "gemini" ? !!hasKeyGemini
+    : provider === "openai" ? !!hasKeyOpenai
+      : !!hasKeyAnthropic;
 
   // Keyboard shortcut: Ctrl+J
   useEffect(() => {
@@ -289,9 +286,8 @@ export function AICopilot() {
     const content = messageContent || input.trim();
     if (!content || sending) return;
 
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      setError("No API key configured. Go to Settings → API Keys to add one.");
+    if (!hasKey) {
+      setError("No API key configured. Ask an admin to configure AI provider keys.");
       return;
     }
 
@@ -308,10 +304,11 @@ export function AICopilot() {
     setError(null);
 
     try {
+      // Gather selected project IDs for deep context
       const result = await copilotAction({
         userMessage: content,
         provider,
-        apiKey,
+        selectedProjectIds: selectedProjectIds.length > 0 ? selectedProjectIds as Id<"projects">[] : undefined,
         context: {
           currentPage: getPageContext(location.pathname),
           activeProjectId,
@@ -351,9 +348,9 @@ export function AICopilot() {
   };
 
   const providerInfo = {
-    gemini: { label: "Gemini", color: "#4285F4", hasKey: !!storedKeyGemini },
-    openai: { label: "GPT-4o", color: "#10A37F", hasKey: !!storedKeyOpenai },
-    anthropic: { label: "Claude", color: "#CC785C", hasKey: !!storedKeyAnthropic },
+    gemini: { label: "Gemini", color: "#4285F4", hasKey: !!hasKeyGemini },
+    openai: { label: "GPT-4o", color: "#10A37F", hasKey: !!hasKeyOpenai },
+    anthropic: { label: "Claude", color: "#CC785C", hasKey: !!hasKeyAnthropic },
   };
 
   const panelWidth = isExpanded ? "w-[560px]" : "w-[420px]";
@@ -453,13 +450,12 @@ export function AICopilot() {
                   <button
                     key={key}
                     onClick={() => info.hasKey && setProvider(key as any)}
-                    className={`text-[11px] px-2.5 py-1 rounded-full border transition-all ${
-                      provider === key
-                        ? "border-primary/40 bg-primary/10 text-primary font-medium"
-                        : info.hasKey
-                          ? "border-border/40 text-muted-foreground hover:border-border hover:text-foreground"
-                          : "border-border/20 text-muted-foreground/40 cursor-not-allowed"
-                    }`}
+                    className={`text-[11px] px-2.5 py-1 rounded-full border transition-all ${provider === key
+                      ? "border-primary/40 bg-primary/10 text-primary font-medium"
+                      : info.hasKey
+                        ? "border-border/40 text-muted-foreground hover:border-border hover:text-foreground"
+                        : "border-border/20 text-muted-foreground/40 cursor-not-allowed"
+                      }`}
                     disabled={!info.hasKey}
                   >
                     {info.label}

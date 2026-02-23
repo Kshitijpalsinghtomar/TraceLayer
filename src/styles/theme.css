@@ -139,6 +139,7 @@
     color: var(--foreground);
     background-color: var(--card);
   }
+
   select option {
     color: var(--foreground);
     background-color: var(--card);
@@ -148,6 +149,7 @@
   .ambient-bg {
     position: relative;
   }
+
   .ambient-bg::before {
     content: '';
     position: fixed;
@@ -159,6 +161,7 @@
     pointer-events: none;
     z-index: 0;
   }
+
   .ambient-bg::after {
     content: '';
     position: fixed;
@@ -175,6 +178,7 @@
   .dark .ambient-bg::before {
     background: radial-gradient(ellipse at center, rgba(129, 140, 248, 0.04) 0%, transparent 70%);
   }
+
   .dark .ambient-bg::after {
     background: radial-gradient(ellipse at center, rgba(167, 139, 250, 0.03) 0%, transparent 70%);
   }
@@ -184,13 +188,16 @@
     width: 6px;
     height: 6px;
   }
+
   ::-webkit-scrollbar-track {
     background: transparent;
   }
+
   ::-webkit-scrollbar-thumb {
     background: var(--muted);
     border-radius: 3px;
   }
+
   ::-webkit-scrollbar-thumb:hover {
     background: var(--muted-foreground);
   }
@@ -252,16 +259,20 @@
   .prose-copilot h4 {
     font-weight: 600;
   }
+
   .prose-copilot li {
     margin-left: 0.5rem;
   }
-  .prose-copilot li + li {
+
+  .prose-copilot li+li {
     margin-top: 0.15rem;
   }
+
   .prose-copilot strong {
     font-weight: 600;
     color: var(--foreground);
   }
+
   .prose-copilot pre {
     margin-block: 0.5rem;
   }
@@ -280,6 +291,7 @@
     border-radius: 0 0 var(--radius) 0;
     transition: top 0.15s;
   }
+
   .skip-link:focus {
     top: 0;
   }

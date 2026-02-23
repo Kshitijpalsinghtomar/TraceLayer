@@ -124,7 +124,9 @@ export function SharedBRDView() {
     const sections = [
         { key: "executiveSummary", label: "Executive Summary", icon: FileText, content: brd.executiveSummary },
         { key: "projectOverview", label: "Project Overview", icon: FileText, content: brd.projectOverview },
+        { key: "scopeDefinition", label: "Scope Definition", icon: Layers, content: brd.scopeDefinition || brd.scope_definition },
         { key: "businessObjectives", label: "Business Objectives", icon: Zap, content: brd.businessObjectives },
+        { key: "stakeholderAnalysis", label: "Stakeholder Analysis", icon: Users, content: brd.stakeholderAnalysis || brd.stakeholder_analysis },
         { key: "functionalAnalysis", label: "Functional Analysis", icon: BarChart3, content: brd.functionalAnalysis },
         { key: "nonFunctionalAnalysis", label: "Non-Functional Analysis", icon: Shield, content: brd.nonFunctionalAnalysis },
         { key: "decisionAnalysis", label: "Decision Analysis", icon: Zap, content: brd.decisionAnalysis },

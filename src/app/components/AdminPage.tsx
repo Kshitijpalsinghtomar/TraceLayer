@@ -2,11 +2,13 @@
  * AdminPage — System administration dashboard.
  * Contains: API key management, audit logs, pipeline logs,
  * system health, and admin-only configuration.
+ *
+ * Access control is handled at the route level by AdminGuard.tsx.
+ * This component assumes the user is already verified as an admin.
  */
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
-import { useAdmin } from '../hooks/useAdmin';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield,
@@ -18,21 +20,14 @@ import {
   EyeOff,
   Trash2,
   Save,
-  Lock,
-  Unlock,
   AlertTriangle,
   CheckCircle2,
-  XCircle,
   RefreshCw,
   Users,
   Database,
-  Clock,
   FileText,
   HelpCircle,
-  LogOut,
-  ChevronRight,
   Search,
-  Filter,
   Cpu,
 } from 'lucide-react';
 
@@ -44,102 +39,10 @@ const tabs = [
   { id: 'system', label: 'System Config', icon: Settings2 },
 ];
 
-// ─── Admin Login Gate ────────────────────────────────────────────────────────
-
-function AdminLoginGate({ onLogin }: { onLogin: (passcode: string) => boolean }) {
-  const [passcode, setPasscode] = useState('');
-  const [error, setError] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const success = onLogin(passcode);
-    if (!success) {
-      setError(true);
-      setTimeout(() => setError(false), 2000);
-    }
-  };
-
-  return (
-    <div className="flex items-center justify-center h-[calc(100vh-60px)]">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <Shield className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-[24px] font-semibold tracking-tight">Admin Access</h1>
-          <p className="text-[14px] text-muted-foreground mt-2">Enter the admin passcode to access system settings</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="bg-card rounded-2xl border border-border/60 p-6 shadow-sm">
-          <label className="text-[12px] font-medium text-foreground/70 uppercase tracking-wider mb-2 block">
-            Admin Passcode
-          </label>
-          <div className="relative mb-4">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={passcode}
-              onChange={(e) => setPasscode(e.target.value)}
-              placeholder="Enter passcode..."
-              className="w-full pl-10 pr-10 py-3 rounded-xl border border-border/60 bg-background text-[14px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
-              autoFocus
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-4 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] flex items-center gap-2"
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                Invalid passcode. Please try again.
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <button
-            type="submit"
-            className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium text-[14px] hover:bg-primary/90 transition-colors"
-          >
-            <span className="flex items-center justify-center gap-2">
-              <Unlock className="w-4 h-4" />
-              Access Admin Panel
-            </span>
-          </button>
-        </form>
-
-        <p className="text-center text-[12px] text-muted-foreground mt-4">
-          Contact the project owner if you need admin access
-        </p>
-      </motion.div>
-    </div>
-  );
-}
-
 // ─── Main Admin Panel ────────────────────────────────────────────────────────
 
 export function AdminPage() {
-  const { isAdmin, login, logout } = useAdmin();
   const [activeTab, setActiveTab] = useState('overview');
-
-  if (!isAdmin) {
-    return <AdminLoginGate onLogin={login} />;
-  }
 
   return (
     <div className="flex h-[calc(100vh-60px)]">
@@ -162,27 +65,16 @@ export function AdminPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] text-left transition-all duration-150 ${
-                activeTab === tab.id
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] text-left transition-all duration-150 ${activeTab === tab.id
                   ? 'bg-primary/10 text-primary font-medium'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-              }`}
+                }`}
             >
               <tab.icon className="w-4 h-4 shrink-0" />
               {tab.label}
             </button>
           ))}
         </nav>
-
-        <div className="px-4 pb-4 border-t border-border/30 mt-auto pt-3">
-          <button
-            onClick={logout}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] text-red-600 hover:bg-red-50 transition-colors"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Exit Admin Mode
-          </button>
-        </div>
       </div>
 
       {/* Main content */}
@@ -245,9 +137,8 @@ function SystemOverview() {
                   <div className={`w-2 h-2 rounded-full ${key ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
                   <span className="text-[14px] font-medium capitalize">{provider === 'openai' ? 'OpenAI' : provider === 'gemini' ? 'Google Gemini' : 'Anthropic'}</span>
                 </div>
-                <span className={`text-[12px] px-2.5 py-1 rounded-full ${
-                  key ? 'bg-emerald-50 text-emerald-700' : 'bg-muted text-muted-foreground'
-                }`}>
+                <span className={`text-[12px] px-2.5 py-1 rounded-full ${key ? 'bg-emerald-50 text-emerald-700' : 'bg-muted text-muted-foreground'
+                  }`}>
                   {key ? `Connected (${key.keyPreview})` : 'Not configured'}
                 </span>
               </div>
@@ -514,11 +405,10 @@ function PipelineLogs() {
             <button
               key={level}
               onClick={() => setLevelFilter(level)}
-              className={`px-3 py-1.5 rounded-lg text-[12px] capitalize transition-all ${
-                levelFilter === level
+              className={`px-3 py-1.5 rounded-lg text-[12px] capitalize transition-all ${levelFilter === level
                   ? 'bg-card shadow-sm text-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground'
-              }`}
+                }`}
             >
               {level}
             </button>

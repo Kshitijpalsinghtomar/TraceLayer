@@ -70,23 +70,92 @@ function buildScopeDescription(
  * Returns an array of SyncedItem ready for source ingestion.
  */
 
+// ─── Resilience constants ────────────────────────────────────────────────────
+const MAX_RETRIES = 2;
+const BASE_DELAY_MS = 1000;
+const MAX_ITEMS_PER_ADAPTER = 100;
+
+/**
+ * Fetch with retry + rate-limit awareness.
+ * On 429 responses respects the Retry-After header.
+ * On 5xx or network errors, retries up to MAX_RETRIES with exponential backoff.
+ */
 async function fetchWithAuth(url: string, token: string, headers?: Record<string, string>): Promise<any> {
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...headers,
-    },
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`API ${res.status}: ${res.statusText} — ${body.slice(0, 200)}`);
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          ...headers,
+        },
+      });
+
+      // Rate-limited — respect Retry-After then retry
+      if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get("Retry-After") || "2", 10);
+        const waitMs = Math.min(retryAfter * 1000, 10_000);
+        console.warn(`[integrationSync] 429 rate limited on ${url}, waiting ${waitMs}ms (attempt ${attempt + 1})`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        // Retry on server errors (5xx)
+        if (res.status >= 500 && attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+          console.warn(`[integrationSync] ${res.status} on ${url}, retrying in ${delay}ms (attempt ${attempt + 1})`);
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        throw new Error(`API ${res.status}: ${res.statusText} — ${body.slice(0, 200)}`);
+      }
+      return res.json();
+    } catch (err: any) {
+      lastError = err;
+      // Retry on network errors
+      if (attempt < MAX_RETRIES && !(err.message?.startsWith("API "))) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+        console.warn(`[integrationSync] Network error on ${url}: ${err.message}, retrying in ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
   }
-  return res.json();
+  throw lastError || new Error("Fetch failed after retries");
 }
 
 function wordCount(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Wraps an adapter call so individual failures are isolated and reported
+ * rather than killing the entire sync batch.
+ */
+async function withAdapterGuard(
+  appId: string,
+  adapterFn: () => Promise<SyncedItem[]>
+): Promise<{ items: SyncedItem[]; error?: string }> {
+  try {
+    const items = await adapterFn();
+    // Enforce per-adapter item cap
+    return { items: items.slice(0, MAX_ITEMS_PER_ADAPTER) };
+  } catch (err: any) {
+    console.error(`[integrationSync] Adapter "${appId}" failed:`, err.message);
+    return {
+      items: [{
+        name: `${appId} — Sync error`,
+        type: "document",
+        content: `Integration sync for ${appId} failed: ${err.message}\n\nThis error was caught automatically. The remaining integrations were not affected.`,
+        metadata: { integrationAppId: appId, wordCount: 15 },
+      }],
+      error: err.message,
+    };
+  }
 }
 
 const APP_ADAPTERS: Record<string, (integration: any) => Promise<SyncedItem[]>> = {
@@ -803,8 +872,11 @@ export const syncIntegration = action({
         return { success: true, itemsSynced: 1 };
       }
 
-      // Run the adapter (all adapters are now async)
-      const items = await adapter(integration);
+      // Run the adapter with error isolation + item cap
+      const { items, error: adapterError } = await withAdapterGuard(
+        args.appId,
+        () => adapter(integration)
+      );
 
       // Upload each item as a source
       for (const item of items) {
@@ -817,14 +889,14 @@ export const syncIntegration = action({
         });
       }
 
-      // Record sync
+      // Record sync (partial success if adapter errored but produced fallback items)
       await ctx.runMutation(api.integrations.recordSync, {
         integrationId: integration._id,
-        status: "success",
+        status: adapterError ? "partial" : "success",
         itemsSynced: items.length,
       });
 
-      return { success: true, itemsSynced: items.length };
+      return { success: !adapterError, itemsSynced: items.length, error: adapterError };
     } catch (error: any) {
       return { success: false, itemsSynced: 0, error: error.message };
     }
@@ -872,8 +944,8 @@ export const syncAllToProject = action({
 export const syncAndRunPipeline = action({
   args: {
     projectId: v.id("projects"),
-    provider: v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic")),
-    apiKey: v.string(),
+    provider: v.optional(v.union(v.literal("openai"), v.literal("gemini"), v.literal("anthropic"))),
+    apiKey: v.optional(v.string()), // deprecated — ignored, resolved server-side
     regenerate: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<any> => {
@@ -882,11 +954,10 @@ export const syncAndRunPipeline = action({
       projectId: args.projectId,
     });
 
-    // Step 2: Run the extraction pipeline
+    // Step 2: Run the extraction pipeline (key resolved server-side)
     const pipelineResult = await ctx.runAction(api.extraction.runExtractionPipeline, {
       projectId: args.projectId,
       provider: args.provider,
-      apiKey: args.apiKey,
       regenerate: args.regenerate,
     });
 

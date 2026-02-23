@@ -1,12 +1,14 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
-// ─── Generate a unique share token ───────────────────────────────────────────
+// ─── Generate a unique share token (cryptographically secure) ───────────────
 function generateToken(): string {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    const randomBytes = new Uint8Array(16);
+    crypto.getRandomValues(randomBytes);
     let token = "";
-    for (let i = 0; i < 12; i++) {
-        token += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let i = 0; i < 16; i++) {
+        token += chars.charAt(randomBytes[i] % chars.length);
     }
     return token;
 }
@@ -80,7 +82,10 @@ export const updatePermission = mutation({
 
 // ─── Get shared BRD data by token (public access) ────────────────────────────
 export const getByToken = query({
-    args: { token: v.string() },
+    args: {
+        token: v.string(),
+        password: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
         const link = await ctx.db
             .query("sharedLinks")
@@ -94,6 +99,16 @@ export const getByToken = query({
         // Check expiration
         if (link.expiresAt && Date.now() > link.expiresAt) {
             return { error: "expired" as const };
+        }
+
+        // Enforce password if set
+        if (link.password) {
+            if (!args.password) {
+                return { error: "password_required" as const, hasPassword: true };
+            }
+            if (args.password !== link.password) {
+                return { error: "wrong_password" as const, hasPassword: true };
+            }
         }
 
         // Fetch project data

@@ -469,11 +469,10 @@ export function DashboardLive() {
                 return (
                   <div
                     key={agent.id}
-                    className={`relative p-3.5 rounded-xl border transition-all duration-300 ${
-                      isActive
+                    className={`relative p-3.5 rounded-xl border transition-all duration-300 ${isActive
                         ? "border-primary/25 bg-gradient-to-br from-primary/[0.04] to-violet-500/[0.04] shadow-md shadow-primary/5"
                         : "border-border/40 hover:border-primary/15 hover:bg-accent/30 hover:shadow-sm"
-                    }`}
+                      }`}
                   >
                     {isActive && (
                       <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-500">
@@ -532,7 +531,7 @@ export function DashboardLive() {
                 {/* Decorative gradient blobs */}
                 <div className="absolute top-0 left-1/4 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
                 <div className="absolute bottom-0 right-1/4 w-24 h-24 bg-violet-500/5 rounded-full blur-2xl" />
-                
+
                 <div className="relative">
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/10 to-violet-500/10 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-primary/5">
                     <Network className="w-8 h-8 text-primary/50" />
@@ -643,13 +642,12 @@ export function DashboardLive() {
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <span
-                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                          run.status === "completed"
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${run.status === "completed"
                             ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
                             : run.status === "failed"
                               ? "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400"
                               : "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
-                        }`}
+                          }`}
                       >
                         {run.status.replace(/_/g, " ")}
                       </span>

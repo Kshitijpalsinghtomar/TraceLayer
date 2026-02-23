@@ -1,50 +1,29 @@
 /**
- * useAdmin — Simple admin role management hook.
- * Admin mode is unlocked with a passcode and persisted in localStorage.
- * In production, replace with proper auth (Clerk, Auth0, etc.)
+ * useAdmin — Role-based admin check using Convex user data.
+ *
+ * Replaces the old localStorage passcode approach with a real
+ * database-backed role check. The user's `role` field in the
+ * Convex `users` table determines admin status.
+ *
+ * The first user to register is automatically promoted to admin
+ * (bootstrap mechanism in convex/users.ts syncUser).
  */
-import { useState, useCallback, useEffect } from 'react';
-
-const ADMIN_STORAGE_KEY = 'tracelayer_admin';
-const ADMIN_PASSCODE = 'tracelayer2026'; // In production, use proper auth
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { useAuth } from "./useAuth";
 
 export function useAdmin() {
-  const [isAdmin, setIsAdmin] = useState(() => {
-    try {
-      return localStorage.getItem(ADMIN_STORAGE_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const { user } = useAuth();
+  const authProviderId = user?.logtoId ?? "";
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(ADMIN_STORAGE_KEY, isAdmin ? 'true' : 'false');
-    } catch {
-      // localStorage unavailable
-    }
-  }, [isAdmin]);
+  const role = useQuery(
+    api.users.getRole,
+    authProviderId ? { authProviderId } : "skip"
+  );
 
-  const login = useCallback((passcode: string): boolean => {
-    if (passcode === ADMIN_PASSCODE) {
-      setIsAdmin(true);
-      return true;
-    }
-    return false;
-  }, []);
+  // role is undefined while loading, null if user not found, or the role string
+  const isLoading = role === undefined;
+  const isAdmin = role === "admin";
 
-  const logout = useCallback(() => {
-    setIsAdmin(false);
-  }, []);
-
-  return { isAdmin, login, logout };
-}
-
-/** Context-free check — useful in components that just need to read */
-export function isAdminMode(): boolean {
-  try {
-    return localStorage.getItem(ADMIN_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
+  return { isAdmin, isLoading, role };
 }

@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
+import { useAuth } from '../hooks/useAuth';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowRight,
@@ -33,34 +34,35 @@ const comingSoonFormats: {
   icon: typeof FileText;
   description: string;
 }[] = [
-  {
-    label: 'PRD',
-    sublabel: 'Product Requirements Document',
-    icon: Target,
-    description: 'Technical product spec with user stories, personas, and acceptance criteria.',
-  },
-  {
-    label: 'SRS',
-    sublabel: 'Software Requirements Specification',
-    icon: FileCode,
-    description: 'IEEE-standard software requirements with functional & interface specs.',
-  },
-  {
-    label: 'FSD',
-    sublabel: 'Functional Specification Document',
-    icon: ClipboardList,
-    description: 'Detailed functional behavior, workflows, and system interaction maps.',
-  },
-  {
-    label: 'TDD',
-    sublabel: 'Technical Design Document',
-    icon: BookOpen,
-    description: 'Architecture diagrams, data models, API contracts, and tech decisions.',
-  },
-];
+    {
+      label: 'PRD',
+      sublabel: 'Product Requirements Document',
+      icon: Target,
+      description: 'Technical product spec with user stories, personas, and acceptance criteria.',
+    },
+    {
+      label: 'SRS',
+      sublabel: 'Software Requirements Specification',
+      icon: FileCode,
+      description: 'IEEE-standard software requirements with functional & interface specs.',
+    },
+    {
+      label: 'FSD',
+      sublabel: 'Functional Specification Document',
+      icon: ClipboardList,
+      description: 'Detailed functional behavior, workflows, and system interaction maps.',
+    },
+    {
+      label: 'TDD',
+      sublabel: 'Technical Design Document',
+      icon: BookOpen,
+      description: 'Architecture diagrams, data models, API contracts, and tech decisions.',
+    },
+  ];
 
 export function NewProject() {
   const navigate = useNavigate();
+  const { convexUser } = useAuth();
   const createProject = useMutation(api.projects.create);
   const [step, setStep] = useState<Step>(1);
   const [name, setName] = useState('');
@@ -76,6 +78,7 @@ export function NewProject() {
         name: name.trim(),
         description: description.trim() || 'No description provided',
         outputFormat,
+        userId: convexUser?._id,
       });
       navigate(`/projects/${projectId}`);
     } catch (err) {
@@ -108,11 +111,10 @@ export function NewProject() {
           {[1, 2].map((s) => (
             <div key={s} className="flex items-center gap-3 flex-1">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-semibold transition-all duration-300 ${
-                  step >= s
-                    ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
-                    : 'bg-muted text-muted-foreground'
-                }`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-semibold transition-all duration-300 ${step >= s
+                  ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
+                  : 'bg-muted text-muted-foreground'
+                  }`}
               >
                 {step > s ? <Check className="w-4 h-4" /> : s}
               </div>

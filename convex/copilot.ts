@@ -2,7 +2,7 @@
 
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 /**
  * copilot.ts — Global AI Copilot Backend
@@ -20,12 +20,14 @@ import { api } from "./_generated/api";
 export const globalChat = action({
   args: {
     userMessage: v.string(),
-    provider: v.union(
+    provider: v.optional(v.union(
       v.literal("openai"),
       v.literal("gemini"),
       v.literal("anthropic")
-    ),
-    apiKey: v.string(),
+    )),
+    apiKey: v.optional(v.string()), // deprecated — ignored, resolved server-side
+    /** Optional: specific projects to load deep context from */
+    selectedProjectIds: v.optional(v.array(v.id("projects"))),
     context: v.optional(
       v.object({
         currentPage: v.optional(v.string()),
@@ -38,9 +40,18 @@ export const globalChat = action({
     ),
   },
   handler: async (ctx, args): Promise<{ response: string }> => {
-    const { userMessage, provider, apiKey, context } = args;
+    const { userMessage, context, selectedProjectIds } = args;
 
-    // ─── Gather cross-project context ─────────────────────────────────
+    // Resolve API key server-side
+    const resolved = await ctx.runQuery(internal.apiKeys.resolveProviderAndKey, {
+      preferredProvider: args.provider,
+    });
+    if (!resolved) {
+      throw new Error("No API key configured. An admin must configure an AI provider key in Settings.");
+    }
+    const { provider, apiKey } = resolved;
+
+    // ─── Gather cross-project context ─────────────────────────────
     const projects: any[] = await ctx.runQuery(api.projects.list);
     const stats: any = await ctx.runQuery(api.projects.getStats);
 
@@ -49,26 +60,65 @@ export const globalChat = action({
       name: p.name,
       status: p.status,
       description: p.description?.substring(0, 150) || "",
-      sources: p.sourcesCount || 0,
-      requirements: p.requirementsCount || 0,
-      stakeholders: p.stakeholdersCount || 0,
-      conflicts: p.conflictsCount || 0,
-      decisions: p.decisionsCount || 0,
+      sources: p.sourceCount || 0,
+      requirements: p.requirementCount || 0,
+      stakeholders: p.stakeholderCount || 0,
+      conflicts: p.conflictCount || 0,
+      decisions: p.decisionCount || 0,
     }));
+
+    // ─── Deep context for selected projects ─────────────────────────
+    let deepProjectContext = "";
+    if (selectedProjectIds && selectedProjectIds.length > 0) {
+      const deepParts: string[] = ["\n## Deep Context (Selected Projects)\n"];
+      for (const pid of selectedProjectIds.slice(0, 5)) {
+        try {
+          const proj: any = await ctx.runQuery(api.projects.get, { projectId: pid });
+          if (!proj) continue;
+          const sources: any[] = await ctx.runQuery(api.sources.listByProject, { projectId: pid });
+          const requirements: any[] = await ctx.runQuery(api.requirements.listByProject, { projectId: pid });
+          const brdDoc: any = await ctx.runQuery(api.documents.getLatest, { projectId: pid, type: "brd" });
+
+          deepParts.push(`### ${proj.name} (${proj.status})`);
+          deepParts.push(`${proj.description || "No description"}`);
+          deepParts.push(`Sources: ${sources.length}, Requirements: ${requirements.length}`);
+
+          // Include top requirements
+          if (requirements.length > 0) {
+            deepParts.push("\nKey Requirements:");
+            for (const r of requirements.slice(0, 8)) {
+              deepParts.push(`- **${r.requirementId}**: ${r.title} (${r.priority}) — ${r.description?.substring(0, 150) || ""}`);
+            }
+          }
+
+          // Include BRD summary
+          if (brdDoc?.content) {
+            try {
+              const brd = JSON.parse(brdDoc.content);
+              if (brd.executiveSummary) {
+                deepParts.push(`\nBRD Summary: ${brd.executiveSummary.substring(0, 500)}`);
+              }
+            } catch { /* ignore parse errors */ }
+          }
+
+          deepParts.push("---");
+        } catch { /* skip failed project loads */ }
+      }
+      deepProjectContext = deepParts.join("\n");
+    }
 
     // If user is viewing a specific project, get deeper context
     let activeProjectContext = "";
     if (context?.activeProjectId) {
       try {
-        const projectId = context.activeProjectId as any;
         const proj = projects.find((p: any) => p._id === context.activeProjectId);
         if (proj) {
           activeProjectContext = `
 ## Currently Viewing Project: ${proj.name}
 Status: ${proj.status}
 Description: ${proj.description || "No description"}
-Sources: ${proj.sourcesCount || 0} | Requirements: ${proj.requirementsCount || 0} | Stakeholders: ${proj.stakeholdersCount || 0}
-Conflicts: ${proj.conflictsCount || 0} | Decisions: ${proj.decisionsCount || 0}`;
+Sources: ${proj.sourceCount || 0} | Requirements: ${proj.requirementCount || 0} | Stakeholders: ${proj.stakeholderCount || 0}
+Conflicts: ${proj.conflictCount || 0} | Decisions: ${proj.decisionCount || 0}`;
         }
       } catch {
         // Project ID may not be valid
@@ -114,9 +164,10 @@ ${stats ? `Total across all projects: ${stats.totalProjects || 0} projects, ${st
 
 ## Projects
 ${projectOverviews.length > 0
-  ? projectOverviews.map(p => `- **${p.name}** (${p.status}): ${p.sources} sources, ${p.requirements} reqs, ${p.stakeholders} stakeholders${p.conflicts > 0 ? `, ⚠️ ${p.conflicts} conflicts` : ""}`).join("\n")
-  : "No projects yet"}
+        ? projectOverviews.map(p => `- **${p.name}** (${p.status}): ${p.sources} sources, ${p.requirements} reqs, ${p.stakeholders} stakeholders${p.conflicts > 0 ? `, ⚠️ ${p.conflicts} conflicts` : ""}`).join("\n")
+        : "No projects yet"}
 ${activeProjectContext}
+${deepProjectContext}
 
 ${pageContext}
 
@@ -130,11 +181,12 @@ ${pageContext}
 - Never fabricate project data. Only reference what's in the context above.
 - For complex questions, provide structured responses with clear sections.
 - You can suggest running the pipeline, creating projects, or navigating to specific views.
+${selectedProjectIds && selectedProjectIds.length > 0 ? "- When referencing data from specific projects, clearly indicate which project the data is from." : ""}
 
 ## Recent Conversation
 ${historyStr}`;
 
-    // ─── Call AI ──────────────────────────────────────────────────────────
+    // ─── Call AI ───────────────────────────────────────────────────────────
     const aiResponse = await callCopilotAI(apiKey, provider, systemPrompt, userMessage);
 
     return { response: aiResponse };

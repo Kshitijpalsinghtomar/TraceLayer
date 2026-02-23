@@ -1,0 +1,19 @@
+﻿node.exe : You're currently developing against your dev deployment
+At C:\Program Files\nodejs\npx.ps1:29 char:3
++   & $NODE_EXE $NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (You're currentl... dev 
+    deployment:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+  keen-ox-53 (set in CONVEX_DEPLOYMENT)
+
+Your prod deployment fine-dragon-114 serves traffic at:
+
+  VITE_CONVEX_URL=https://fine-dragon-114.convex.cloud
+
+Make sure that your published client is configured with this URL 
+(for instructions see https://docs.convex.dev/hosting)
+
+? Do you want to push your code to your prod deployment fine-dragon-114 now?

@@ -18,6 +18,8 @@ import {
   Network,
   MessageSquare,
   BarChart3,
+  Lightbulb,
+  FileTerminal,
   SlidersHorizontal,
   Shield,
   AlertTriangle,
@@ -28,6 +30,9 @@ import { NotificationPanel, useNotificationCount } from './NotificationPanel';
 import { UserMenu } from './UserMenu';
 import { AICopilot } from './AICopilot';
 import { useAdmin } from '../hooks/useAdmin';
+
+// Add Link2 for Document Chain
+import { Link2 } from 'lucide-react';
 
 const mainNav = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -135,12 +140,7 @@ export function Layout() {
 
   const toggleTheme = useCallback(() => setIsDarkMode((v) => !v), []);
 
-  // ─── First-visit redirect to landing page ──────────────────────────
-  useEffect(() => {
-    if (!localStorage.getItem('tracelayer-entered') && location.pathname === '/') {
-      navigate('/welcome', { replace: true });
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: First-visit redirect removed — AuthGuard now handles unauthenticated users
 
   // Detect if we're inside a project
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
@@ -171,7 +171,7 @@ export function Layout() {
   const configureNav = getConfigureNav(isAdmin);
 
   // ─── Integration stats for sidebar CTA ─────────────────────────────────
-  const integrationStats = useQuery(api.integrations.getConnectedCount);
+  const integrationStats = useQuery(api.integrations.getConnectedCount, isInsideProject ? { projectId: projectId as Id<"projects"> } : {});
 
   // ─── Inline search state ───────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -225,7 +225,7 @@ export function Layout() {
       <aside className="w-[260px] shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col relative overflow-hidden" role="navigation" aria-label="Main navigation">
         {/* Subtle gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-primary/[0.02] via-transparent to-primary/[0.01] pointer-events-none" />
-        
+
         {/* Logo */}
         <div className="relative px-7 py-6 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-md shadow-primary/25">
@@ -273,14 +273,12 @@ export function Layout() {
               <div className="space-y-0.5">
                 {[
                   { to: `/projects/${projectId}`, icon: MessageSquare, label: 'Workspace', end: true },
+                  { to: `/projects/${projectId}/chain`, icon: Link2, label: 'Document Chain' },
                   { to: `/projects/${projectId}/brd`, icon: FileText, label: 'BRD Document' },
                   { to: `/projects/${projectId}/graph`, icon: Network, label: 'Knowledge Graph' },
                   { to: `/projects/${projectId}/analytics`, icon: BarChart3, label: 'Analytics' },
-                  { to: `/projects/${projectId}/conflicts`, icon: AlertTriangle, label: 'Conflicts' },
-                  ...(isAdmin ? [
-                    { to: `/projects/${projectId}/pipeline`, icon: Terminal, label: 'Pipeline Logs' },
-                    { to: `/projects/${projectId}/controls`, icon: SlidersHorizontal, label: 'Control Center' },
-                  ] : []),
+                  { to: `/projects/${projectId}/decisions`, icon: Lightbulb, label: 'Decisions' },
+                  { to: `/projects/${projectId}/sources`, icon: FileTerminal, label: 'Sources' },
                 ].map((item) => (
                   <NavLink
                     key={item.to}
@@ -382,19 +380,21 @@ export function Layout() {
                   <item.icon className="w-[18px] h-[18px]" />
                 </NavLink>
               ))}
-              {/* Admin link */}
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  `flex items-center justify-between px-3 py-2.5 rounded-lg text-[14px] transition-all duration-150 ${isActive
-                    ? 'bg-primary/8 text-primary'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  }`
-                }
-              >
-                <span>{isAdmin ? 'Admin Panel' : 'Admin'}</span>
-                <Shield className="w-[18px] h-[18px]" />
-              </NavLink>
+              {/* Admin link — only visible for admin-role users */}
+              {isAdmin && (
+                <NavLink
+                  to="/admin"
+                  className={({ isActive }) =>
+                    `flex items-center justify-between px-3 py-2.5 rounded-lg text-[14px] transition-all duration-150 ${isActive
+                      ? 'bg-primary/8 text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    }`
+                  }
+                >
+                  <span>Admin Panel</span>
+                  <Shield className="w-[18px] h-[18px]" />
+                </NavLink>
+              )}
             </div>
           </div>
         </nav>
@@ -417,7 +417,7 @@ export function Layout() {
                 ? `${integrationStats.connected} integration${integrationStats.connected !== 1 ? 's' : ''} active. Connect more for richer BRD extraction.`
                 : 'Connect Slack, GitHub, Jira, Gmail & more for automated extraction.'}
             </p>
-            <button onClick={() => navigate('/integrations')} className="mt-3 text-[12px] text-primary font-medium hover:underline flex items-center gap-1 group">
+            <button onClick={() => navigate(isInsideProject ? `/projects/${projectId}/integrations` : '/integrations')} className="mt-3 text-[12px] text-primary font-medium hover:underline flex items-center gap-1 group">
               {integrationStats && integrationStats.connected > 0 ? 'Manage integrations' : 'Set up integrations'}
               <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </button>

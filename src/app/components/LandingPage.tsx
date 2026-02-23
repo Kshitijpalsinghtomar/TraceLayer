@@ -31,6 +31,8 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  ShieldCheck,
+  MessageSquare,
 } from "lucide-react";
 
 /* ═══ Data ════════════════════════════════════════════════════════════════ */
@@ -49,44 +51,35 @@ const AGENTS = [
 const FEATURES = [
   {
     icon: Brain,
-    title: "9 Agents, One Mind",
-    desc: "Not one model doing everything — nine specialized agents that reason, cross-check, and build the BRD together.",
+    title: "Multi-Agent Architecture",
+    desc: "Not a single prompt — an orchestration of nine specialized agents that reason, cross-check, and build your requirements together.",
     gradient: "from-violet-500/20 to-indigo-500/20",
-    iconColor: "#818CF8",
+    iconColor: "#8B5CF6",
     span: "md:col-span-2",
     preview: "agent-grid",
   },
   {
-    icon: Shield,
-    title: "Conflict Detection",
-    desc: "Automated contradiction spotting across requirements before they ship.",
-    gradient: "from-red-500/20 to-orange-500/20",
-    iconColor: "#EF4444",
+    icon: Network,
+    title: "Transparent Reasoning",
+    desc: "Watch the intelligence engine work in real-time. Full insight into what each agent extracts, analyzes, and decides.",
+    gradient: "from-indigo-500/20 to-blue-500/20",
+    iconColor: "#3B82F6",
     span: "",
-    preview: "conflict",
+    preview: "pipeline",
   },
   {
-    icon: GitMerge,
-    title: "Full Traceability",
-    desc: "Every requirement linked to its source. Click any line, see where it came from.",
-    gradient: "from-emerald-500/20 to-cyan-500/20",
+    icon: FileText,
+    title: "Enterprise Standards",
+    desc: "Export instantly to PDF or Word. Generate PRDs, BRDs, SRS, and test plans mapped perfectly to your company's templates.",
+    gradient: "from-emerald-500/20 to-teal-500/20",
     iconColor: "#10B981",
     span: "",
-    preview: "trace",
+    preview: "export",
   },
   {
-    icon: BarChart3,
-    title: "Live Analytics",
-    desc: "Coverage gaps, stakeholder influence, requirement quality — all surfaced automatically.",
-    gradient: "from-cyan-500/20 to-blue-500/20",
-    iconColor: "#06B6D4",
-    span: "",
-    preview: "chart",
-  },
-  {
-    icon: Sparkles,
-    title: "AI Copilot",
-    desc: "Ask anything about your project. The copilot reasons across all agents and sources to answer instantly.",
+    icon: MessageSquare,
+    title: "Context-Aware Copilot",
+    desc: "Ask anything about your product context. The copilot reasons across all integrations and sources to deliver instant answers.",
     gradient: "from-amber-500/20 to-yellow-500/20",
     iconColor: "#F59E0B",
     span: "",
@@ -94,8 +87,8 @@ const FEATURES = [
   },
   {
     icon: Link2,
-    title: "Knowledge Graph",
-    desc: "Interactive force-directed graph showing how everything connects — requirements, people, decisions.",
+    title: "Interactive Traceability",
+    desc: "Explore a force-directed knowledge graph showing exactly how product decisions link to engineering tickets and stakeholder requests.",
     gradient: "from-pink-500/20 to-violet-500/20",
     iconColor: "#EC4899",
     span: "md:col-span-2",
@@ -104,24 +97,24 @@ const FEATURES = [
 ];
 
 const COMPARISONS = [
-  { traditional: "Manually read hundreds of pages", tracelayer: "Auto-ingest from any source" },
-  { traditional: "Requirements lost in email threads", tracelayer: "Every requirement traced to origin" },
-  { traditional: "Conflicts found in production", tracelayer: "Conflicts detected before they ship" },
-  { traditional: "Static Word documents", tracelayer: "Living BRD, always up to date" },
-  { traditional: "Weeks of manual analysis", tracelayer: "Seconds with 9 AI agents" },
+  { traditional: "Manually compile requirements across tools", tracelayer: "Auto-ingest context via secure integrations" },
+  { traditional: "Requirements lost in Jira & Slack comments", tracelayer: "Every product spec traced to origin automatically" },
+  { traditional: "Siloed context between PMs and Engineering", tracelayer: "Centralized knowledge graph for the entire team" },
+  { traditional: "Static, outdated Word documents", tracelayer: "Living requirements mapped to production code" },
+  { traditional: "Weeks of manual stakeholder alignment", tracelayer: "Automated consensus building in seconds" },
 ];
 
 const STEPS = [
-  { num: "01", title: "Feed", icon: Upload, color: "#E8A838", desc: "Connect Slack, Drive, Jira, Confluence — or just drag-and-drop documents. Meeting transcripts, emails, specs — all of it." },
-  { num: "02", title: "Think", icon: Brain, color: "#818CF8", desc: "Nine agents work in parallel: extracting requirements, mapping stakeholders, detecting conflicts, building a knowledge graph." },
-  { num: "03", title: "Ship", icon: Rocket, color: "#34D399", desc: "A living BRD updates in real-time. Every requirement traced to its source. Export, share, iterate." },
+  { num: "01", title: "Connect", icon: Upload, color: "#E8A838", desc: "Connect Jira, Slack, Notion, and Confluence. We ingest your unstructured product discussions and scattered design specs." },
+  { num: "02", title: "Compute", icon: Brain, color: "#818CF8", desc: "Our Intelligence Engine goes to work. Nine micro-agents extract requirements, resolve edge cases, and map engineering constraints." },
+  { num: "03", title: "Ship", icon: Rocket, color: "#34D399", desc: "Generate flawless PRDs and Traceability Matrices instantly. Engineering gets the exact specs they need to execute." },
 ];
 
 const STATS = [
-  { value: "9", label: "AI Agents" },
+  { value: "10+", label: "Integrations" },
   { value: "< 30s", label: "Analysis Time" },
   { value: "100%", label: "Traceable" },
-  { value: "Real-time", label: "Collaboration" },
+  { value: "SOC 2", label: "Ready" },
 ];
 
 /* ═══ Animated Grid Background ═══════════════════════════════════════════ */
@@ -511,8 +504,11 @@ export function LandingPage() {
 
   const handleEnter = () => {
     setEntered(true);
-    localStorage.setItem("tracelayer-entered", "true");
-    setTimeout(() => navigate("/"), 350);
+    setTimeout(() => navigate("/sign-up"), 350);
+  };
+
+  const handleSignIn = () => {
+    navigate("/sign-in");
   };
 
   return (
@@ -566,10 +562,16 @@ export function LandingPage() {
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
             <button
-              onClick={handleEnter}
-              className="text-[13px] px-5 py-2 rounded-lg bg-foreground/[0.08] border border-foreground/[0.12] text-foreground/80 hover:bg-foreground/[0.14] hover:text-foreground transition-all font-medium"
+              onClick={handleSignIn}
+              className="text-[13px] px-4 py-2 rounded-lg text-foreground/80 hover:text-foreground transition-all font-medium"
             >
-              Enter App →
+              Sign In
+            </button>
+            <button
+              onClick={handleEnter}
+              className="text-[13px] px-5 py-2 rounded-lg bg-gradient-to-r from-indigo-500 to-violet-500 text-white hover:from-indigo-400 hover:to-violet-400 transition-all font-medium shadow-md shadow-indigo-500/20"
+            >
+              Get Started →
             </button>
           </div>
         </div>
@@ -588,19 +590,19 @@ export function LandingPage() {
             transition={{ duration: 0.7, delay: 0.2 }}
           >
             <motion.div
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[12px] text-primary mb-8"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[12px] text-primary mb-8 font-medium tracking-wide"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              Multi-Agent Intelligence
-              <span className="w-1 h-1 rounded-full bg-indigo-400" />
-              Live Pipeline
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Enterprise-Grade Document Intelligence
+              <span className="w-1 h-1 rounded-full bg-indigo-400 mx-1" />
+              Automated PRD Generation
             </motion.div>
 
             <h1
-              className="text-[clamp(3rem,6vw,5rem)] leading-[1.05] tracking-tight mb-6"
+              className="text-[clamp(3rem,5vw,4.5rem)] leading-[1.05] tracking-tight mb-6"
               style={{ fontFamily: "'DM Serif Display', serif" }}
             >
               <motion.span
@@ -609,15 +611,15 @@ export function LandingPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5, duration: 0.6 }}
               >
-                Requirements,
+                Product Context,
               </motion.span>
               <motion.span
-                className="block bg-gradient-to-r from-indigo-400 via-violet-400 to-purple-300 bg-clip-text text-transparent"
+                className="block bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-400 bg-clip-text text-transparent"
                 initial={{ opacity: 0, y: 24 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.65, duration: 0.6 }}
               >
-                understood.
+                Automated.
               </motion.span>
             </h1>
 
@@ -627,10 +629,7 @@ export function LandingPage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.85, duration: 0.6 }}
             >
-              TraceLayer turns scattered documents, meetings, and messages into
-              structured, traceable requirements — with a fleet of{" "}
-              <span className="text-primary font-medium">9 AI agents</span>{" "}
-              that reason together in real-time.
+              TraceLayer is the AI engine for modern product teams. We transform scattered Jira tickets, Confluence pages, Slack threads, and Zoom recordings into structured, traceable product requirements.
             </motion.p>
 
             <motion.div
@@ -641,16 +640,19 @@ export function LandingPage() {
             >
               <motion.button
                 onClick={handleEnter}
-                className="group flex items-center gap-3 px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-400 hover:to-violet-400 text-white font-semibold text-[15px] transition-all duration-300 shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40"
+                className="group flex items-center gap-3 px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-[15px] transition-all duration-300 shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40"
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
               >
-                Enter TraceLayer
+                Start Building Today
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </motion.button>
-              <span className="text-[13px] text-muted-foreground/60">
-                No account required
-              </span>
+              <button
+                onClick={handleSignIn}
+                className="text-[13px] text-muted-foreground hover:text-foreground transition-colors font-medium"
+              >
+                Request Enterprise Demo →
+              </button>
             </motion.div>
 
             {/* Stats */}
@@ -706,14 +708,14 @@ export function LandingPage() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
           >
-            <span className="text-[11px] uppercase tracking-[0.3em] text-primary/70 block mb-4">
-              How it works
+            <span className="text-[11px] uppercase tracking-[0.3em] text-primary/70 block mb-4 font-semibold">
+              The Engine
             </span>
             <h2
               className="text-[clamp(1.8rem,3.5vw,2.8rem)] text-foreground/90 tracking-tight"
               style={{ fontFamily: "'DM Serif Display', serif" }}
             >
-              Three acts. One living document.
+              The AI infrastructure for product teams.
             </h2>
           </motion.div>
 
@@ -789,14 +791,14 @@ export function LandingPage() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <span className="text-[11px] uppercase tracking-[0.3em] text-primary/70 block mb-4">
-              Built different
+            <span className="text-[11px] uppercase tracking-[0.3em] text-primary/70 block mb-4 font-semibold">
+              Purpose-built platform
             </span>
             <h2
               className="text-[clamp(1.8rem,3.5vw,2.8rem)] text-foreground/90 tracking-tight"
               style={{ fontFamily: "'DM Serif Display', serif" }}
             >
-              Not another doc generator.
+              Designed for product engineering.
             </h2>
           </motion.div>
 
@@ -1019,13 +1021,13 @@ export function LandingPage() {
           />
 
           <motion.h2
-            className="text-[clamp(1.8rem,3.5vw,2.8rem)] text-foreground/90 tracking-tight mb-5"
+            className="text-[clamp(1.8rem,3vw,2.5rem)] text-foreground/90 tracking-tight mb-5"
             style={{ fontFamily: "'DM Serif Display', serif" }}
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            See it in action.
+            Ready to accelerate your product velocity?
           </motion.h2>
 
           <motion.p
@@ -1035,31 +1037,40 @@ export function LandingPage() {
             viewport={{ once: true }}
             transition={{ delay: 0.1 }}
           >
-            Jump straight into the platform. Explore a demo project, run the
-            pipeline, and watch 9 agents build a BRD from scratch.
+            Join forward-thinking engineering and product teams building the future with TraceLayer's document intelligence engine.
           </motion.p>
 
-          <motion.button
-            onClick={handleEnter}
-            className="group inline-flex items-center gap-3 px-10 py-4 rounded-xl bg-foreground text-background font-semibold text-[15px] transition-all duration-200 hover:bg-foreground/90 shadow-2xl shadow-foreground/10 hover:shadow-foreground/15"
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
+          <motion.div
+            className="flex flex-col sm:flex-row items-center gap-4 justify-center"
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.15 }}
           >
-            Start Exploring
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </motion.button>
+            <motion.button
+              onClick={handleEnter}
+              className="group inline-flex items-center gap-3 px-10 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold text-[15px] transition-all duration-200 hover:from-indigo-500 hover:to-violet-500 shadow-2xl shadow-indigo-500/20"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              Start Building Today
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </motion.button>
+            <button
+              onClick={handleSignIn}
+              className="text-[13px] text-muted-foreground/60 hover:text-foreground transition-colors font-medium border border-transparent hover:border-border/50 px-6 py-3.5 rounded-xl"
+            >
+              Enterprise Contact
+            </button>
+          </motion.div>
 
           <p className="mt-6 text-[12px] text-muted-foreground/50">
-            No sign-up required. Jump straight in.
+            SOC 2 Type II compliant. Built for scale.
           </p>
 
           {/* Tech badges */}
           <div className="flex flex-wrap justify-center gap-3 mt-16">
-            {["React 18", "Convex", "Multi-Agent AI", "Real-time Sync", "TypeScript", "Knowledge Graphs"].map((t) => (
+            {["SOC 2 Compliant", "Enterprise Ready", "AI-Powered", "Real-time Sync", "Full Traceability", "10+ Integrations"].map((t) => (
               <span
                 key={t}
                 className="px-3 py-1.5 rounded-lg bg-foreground/[0.04] border border-foreground/[0.08] text-[11px] text-muted-foreground/70 font-medium"
@@ -1072,15 +1083,51 @@ export function LandingPage() {
       </section>
 
       {/* ════════ FOOTER ════════════════════════════════════════════ */}
-      <footer className="border-t border-foreground/[0.06] py-8 px-6 sm:px-10">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 rounded-md bg-indigo-500/15 flex items-center justify-center">
-              <Layers className="w-3 h-3 text-indigo-400/60" />
+      <footer className="border-t border-foreground/[0.06] py-12 px-6 sm:px-10">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
+            <div>
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500/30 to-violet-500/30 border border-indigo-500/25 flex items-center justify-center">
+                  <Layers className="w-3.5 h-3.5 text-primary" />
+                </div>
+                <span className="text-[14px] font-semibold text-foreground/80">TraceLayer</span>
+              </div>
+              <p className="text-[12px] text-muted-foreground/50 leading-relaxed">
+                AI-powered document intelligence platform that transforms scattered communications into traceable business documents.
+              </p>
             </div>
-            <span className="text-[12px] text-muted-foreground/50">TraceLayer © 2026 </span>
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground/50 mb-3 font-semibold">Product</p>
+              <div className="space-y-2">
+                <a href="#features" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Features</a>
+                <a href="#pipeline" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Pipeline</a>
+                <a href="#" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Integrations</a>
+                <a href="#" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Pricing</a>
+              </div>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground/50 mb-3 font-semibold">Company</p>
+              <div className="space-y-2">
+                <a href="#" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">About</a>
+                <a href="#" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Blog</a>
+                <a href="#" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Careers</a>
+                <a href="#" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Contact</a>
+              </div>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground/50 mb-3 font-semibold">Legal</p>
+              <div className="space-y-2">
+                <a href="#" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Privacy Policy</a>
+                <a href="#" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Terms of Service</a>
+                <a href="#" className="block text-[12px] text-muted-foreground/60 hover:text-foreground/70 transition-colors">Security</a>
+              </div>
+            </div>
           </div>
-          <span className="text-[11px] text-muted-foreground/40">TraceLayer © 2026 • Intelligence-driven requirements</span>
+          <div className="pt-6 border-t border-foreground/[0.04] flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground/40">© 2026 TraceLayer. All rights reserved.</span>
+            <span className="text-[11px] text-muted-foreground/30">Intelligence-driven requirements</span>
+          </div>
         </div>
       </footer>
 

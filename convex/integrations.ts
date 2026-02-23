@@ -169,10 +169,21 @@ export const remove = mutation({
   },
 });
 
-// ─── Get connected integrations count ──────────────────────────────────────
+// ─── Get connected integrations count (optionally per project) ──────────────
 export const getConnectedCount = query({
-  handler: async (ctx) => {
-    const all = await ctx.db.query("integrations").collect();
+  args: {
+    projectId: v.optional(v.id("projects")),
+  },
+  handler: async (ctx, args) => {
+    let all;
+    if (args.projectId) {
+      all = await ctx.db
+        .query("integrations")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .collect();
+    } else {
+      all = await ctx.db.query("integrations").collect();
+    }
     const connected = all.filter((i) => i.status === "connected" || i.status === "paused");
     return {
       total: all.length,
@@ -182,10 +193,21 @@ export const getConnectedCount = query({
   },
 });
 
-// ─── List connected (for pipeline to fetch) ────────────────────────────────
+// ─── List connected (optionally per project, for pipeline to fetch) ────────
 export const listConnected = query({
-  handler: async (ctx) => {
-    const all = await ctx.db.query("integrations").collect();
+  args: {
+    projectId: v.optional(v.id("projects")),
+  },
+  handler: async (ctx, args) => {
+    let all;
+    if (args.projectId) {
+      all = await ctx.db
+        .query("integrations")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .collect();
+    } else {
+      all = await ctx.db.query("integrations").collect();
+    }
     return all.filter((i) => i.status === "connected");
   },
 });

@@ -5,7 +5,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import type { Id } from "../../../convex/_generated/dataModel";
 import {
   CheckCircle2,
@@ -431,11 +431,10 @@ function ConnectModal({
         <div className="border-t border-border px-6 py-4 flex items-center justify-end gap-3 bg-muted/20">
           <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-[13px] text-muted-foreground hover:text-foreground hover:bg-accent transition-all">Cancel</button>
           <button onClick={handleSubmit} disabled={isConnecting || !tokenInput.trim()}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-medium transition-all shadow-sm ${
-              isConnecting || !tokenInput.trim()
-                ? "bg-muted text-muted-foreground cursor-not-allowed"
-                : "bg-primary text-primary-foreground hover:bg-primary/90"
-            }`}>
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-medium transition-all shadow-sm ${isConnecting || !tokenInput.trim()
+              ? "bg-muted text-muted-foreground cursor-not-allowed"
+              : "bg-primary text-primary-foreground hover:bg-primary/90"
+              }`}>
             {isConnecting ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Connecting...</> : <><Zap className="w-3.5 h-3.5" /> Connect</>}
           </button>
         </div>
@@ -484,14 +483,12 @@ function DataControlModal({
             <div>
               <h2 className="text-[16px] font-semibold">{app.name} — Data Control</h2>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                  integration.status === "connected" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${integration.status === "connected" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
                   integration.status === "paused" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                  "bg-red-500/10 text-red-600 dark:text-red-400"
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    integration.status === "connected" ? "bg-emerald-500" : integration.status === "paused" ? "bg-amber-500" : "bg-red-500"
-                  }`} />
+                    "bg-red-500/10 text-red-600 dark:text-red-400"
+                  }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${integration.status === "connected" ? "bg-emerald-500" : integration.status === "paused" ? "bg-amber-500" : "bg-red-500"
+                    }`} />
                   {integration.status}
                 </span>
                 {integration.lastSyncAt && (
@@ -620,6 +617,8 @@ function DataControlModal({
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function IntegrationsView() {
   const navigate = useNavigate();
+  const { projectId: rawProjectId } = useParams<{ projectId: string }>();
+  const projectId = rawProjectId as unknown as Id<"projects"> | undefined;
   const [activeCategory, setActiveCategory] = useState<"All" | Category>("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [configuringAppId, setConfiguringAppId] = useState<string | null>(null);
@@ -627,7 +626,7 @@ export function IntegrationsView() {
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
 
-  const integrations = useQuery(api.integrations.list, {}) || [];
+  const integrations = useQuery(api.integrations.list, { projectId: projectId }) || [];
   const projects = useQuery(api.projects.list) || [];
 
   const connectMut = useMutation(api.integrations.connect);
@@ -683,6 +682,7 @@ export function IntegrationsView() {
       const preview = accessToken.length > 12 ? accessToken.slice(0, 8) + "..." + accessToken.slice(-4) : "***";
       await connectMut({
         appId, label: app?.name,
+        projectId: projectId,
         credentials: { accessToken, tokenPreview: preview, scopes: app?.permissions || [], expiresAt: Date.now() + 90 * 24 * 60 * 60 * 1000, connectionMethod: "api_token" },
         dataScope: { includeComments: true, includeAttachments: true },
       });
@@ -768,9 +768,8 @@ export function IntegrationsView() {
               const isPaused = integration.status === "paused";
               return (
                 <div key={app.id}
-                  className={`group relative rounded-2xl border bg-card p-5 transition-all duration-200 hover:shadow-lg cursor-pointer ${
-                    isPaused ? "border-amber-500/20 opacity-80" : "border-emerald-500/20 hover:border-emerald-500/40"
-                  }`}
+                  className={`group relative rounded-2xl border bg-card p-5 transition-all duration-200 hover:shadow-lg cursor-pointer ${isPaused ? "border-amber-500/20 opacity-80" : "border-emerald-500/20 hover:border-emerald-500/40"
+                    }`}
                   onClick={() => setConfiguringAppId(app.id)}
                 >
                   <div className="flex items-start gap-3.5 mb-3">
@@ -780,9 +779,8 @@ export function IntegrationsView() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="text-[15px] font-semibold truncate">{app.name}</h3>
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${
-                          isPaused ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                        }`}>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${isPaused ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          }`}>
                           {isPaused ? <><Pause className="w-2.5 h-2.5" /> Paused</> : <><CheckCircle2 className="w-2.5 h-2.5" /> Live</>}
                         </span>
                       </div>
@@ -839,11 +837,10 @@ export function IntegrationsView() {
             <div className="flex flex-wrap gap-2 mt-3">
               {projects.map((project) => (
                 <button key={project._id} onClick={() => handleSyncToProject(project._id)} disabled={syncingProject !== null}
-                  className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[13px] border transition-all ${
-                    syncingProject === project._id
-                      ? "bg-primary/10 border-primary/30 text-primary"
-                      : "border-border hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm"
-                  }`}>
+                  className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[13px] border transition-all ${syncingProject === project._id
+                    ? "bg-primary/10 border-primary/30 text-primary"
+                    : "border-border hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm"
+                    }`}>
                   {syncingProject === project._id ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" /> : <Database className="w-3.5 h-3.5 text-muted-foreground" />}
                   <span className="font-medium">{project.name}</span>
                   <ArrowRight className="w-3 h-3 text-muted-foreground" />
@@ -869,18 +866,16 @@ export function IntegrationsView() {
         {/* Category pills */}
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => setActiveCategory("All")}
-            className={`px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all ${
-              activeCategory === "All" ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}>
+            className={`px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all ${activeCategory === "All" ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}>
             All ({APP_CATALOG.length})
           </button>
           {ALL_CATEGORIES.map((cat) => {
             const CatIcon = CATEGORY_ICONS[cat];
             return (
               <button key={cat} onClick={() => setActiveCategory(cat)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all ${
-                  activeCategory === cat ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}>
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all ${activeCategory === cat ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}>
                 <CatIcon className="w-3.5 h-3.5" /> {cat} ({categoryCounts[cat]})
               </button>
             );
@@ -924,11 +919,10 @@ export function IntegrationsView() {
 
             return (
               <div key={app.id}
-                className={`group rounded-2xl border bg-card transition-all duration-200 overflow-hidden ${
-                  isConnected
-                    ? "border-emerald-500/15 ring-1 ring-emerald-500/5"
-                    : "border-border/60 hover:border-primary/20 hover:shadow-md"
-                }`}>
+                className={`group rounded-2xl border bg-card transition-all duration-200 overflow-hidden ${isConnected
+                  ? "border-emerald-500/15 ring-1 ring-emerald-500/5"
+                  : "border-border/60 hover:border-primary/20 hover:shadow-md"
+                  }`}>
                 {/* Card body */}
                 <div className="p-5">
                   <div className="flex items-start gap-3.5 mb-3">

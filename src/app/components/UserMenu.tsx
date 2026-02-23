@@ -1,16 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { createPortal } from 'react-dom';
-import { useQuery, useMutation } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
+import { useAuth } from '../hooks/useAuth';
 import {
   Settings,
   HelpCircle,
   LogOut,
   ChevronDown,
-  Loader2,
-  Moon,
-  Sun,
   User,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -22,24 +18,18 @@ interface UserMenuProps {
 
 export function UserMenu({ onThemeToggle, isDarkMode }: UserMenuProps) {
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
 
-  // Get user info from settings
-  const settings = useQuery(api.settings.getAll);
-  const setSetting = useMutation(api.settings.set);
+  const userName = user?.name ?? 'User';
+  const userEmail = user?.email ?? '';
+  const userAvatar = user?.avatar;
 
-  const [saving, setSaving] = useState(false);
-
-  const profile = settings?.['profile']
-    ? JSON.parse(settings['profile'])
-    : { name: 'TraceLayer User', email: '' };
-
-  const userInitials = profile.name
-    ? profile.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
-    : 'TL';
+  const userInitials = userName
+    .split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
 
   // Calculate dropdown position when opening
   useEffect(() => {
@@ -113,12 +103,16 @@ export function UserMenu({ onThemeToggle, isDarkMode }: UserMenuProps) {
         {/* User info header */}
         <div className="px-4 py-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-[14px] text-primary font-medium shrink-0">
-              {userInitials}
-            </div>
+            {userAvatar ? (
+              <img src={userAvatar} alt={userName} className="w-10 h-10 rounded-full shrink-0" />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-[14px] text-primary font-medium shrink-0">
+                {userInitials}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-medium text-popover-foreground truncate">{profile.name || 'User'}</p>
-              <p className="text-[12px] text-muted-foreground truncate">{profile.email || 'No email set'}</p>
+              <p className="text-[14px] font-medium text-popover-foreground truncate">{userName}</p>
+              <p className="text-[12px] text-muted-foreground truncate">{userEmail || 'No email set'}</p>
             </div>
           </div>
         </div>
@@ -141,11 +135,11 @@ export function UserMenu({ onThemeToggle, isDarkMode }: UserMenuProps) {
             </button>
           ))}
         </div>
-        
+
         {/* Sign out */}
         <div className="px-4 py-2 border-t border-border">
           <button
-            onClick={() => { setOpen(false); navigate('/'); }}
+            onClick={() => { setOpen(false); signOut(); }}
             className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-destructive/10 transition-colors text-left text-destructive"
           >
             <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
@@ -166,9 +160,13 @@ export function UserMenu({ onThemeToggle, isDarkMode }: UserMenuProps) {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors"
       >
-        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[11px] text-primary font-medium">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : userInitials}
-        </div>
+        {userAvatar ? (
+          <img src={userAvatar} alt={userName} className="w-8 h-8 rounded-full" />
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[11px] text-primary font-medium">
+            {userInitials}
+          </div>
+        )}
         <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {dropdown}

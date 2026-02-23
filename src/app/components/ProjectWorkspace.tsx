@@ -314,12 +314,12 @@ export function ProjectWorkspace() {
     api.documents.listByProject,
     projectId ? { projectId: projectId as Id<"projects"> } : "skip"
   );
-  const integrations = useQuery(api.integrations.list, {});
+  const integrations = useQuery(api.integrations.list, projectId ? { projectId: projectId as Id<"projects"> } : {});
   const uploadSource = useMutation(api.sources.upload);
   const runPipeline = useAction(api.extraction.runExtractionPipeline);
-  const storedKeyGemini = useQuery(api.apiKeys.getKeyForProvider, { provider: "gemini" });
-  const storedKeyOpenai = useQuery(api.apiKeys.getKeyForProvider, { provider: "openai" });
-  const storedKeyAnthropic = useQuery(api.apiKeys.getKeyForProvider, { provider: "anthropic" });
+  const hasKeyGemini = useQuery(api.apiKeys.hasKeyForProvider, { provider: "gemini" });
+  const hasKeyOpenai = useQuery(api.apiKeys.hasKeyForProvider, { provider: "openai" });
+  const hasKeyAnthropic = useQuery(api.apiKeys.hasKeyForProvider, { provider: "anthropic" });
   const activeKeys = useQuery(api.apiKeys.getActiveKeys);
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -337,24 +337,22 @@ export function ProjectWorkspace() {
   const [generatingBRD, setGeneratingBRD] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
-  // Resolve API key for direct pipeline trigger
-  const resolvedApiKey = storedKeyOpenai || storedKeyGemini || storedKeyAnthropic;
-  const resolvedProvider: "openai" | "gemini" | "anthropic" = storedKeyOpenai ? "openai" : storedKeyGemini ? "gemini" : "anthropic";
-  const hasApiKey = !!resolvedApiKey;
+  // Check key availability (keys resolve server-side, frontend only checks existence)
+  const resolvedProvider: "openai" | "gemini" | "anthropic" = hasKeyOpenai ? "openai" : hasKeyGemini ? "gemini" : "anthropic";
+  const hasApiKey = !!(hasKeyOpenai || hasKeyGemini || hasKeyAnthropic);
 
   const handleGenerateBRD = async () => {
-    if (!resolvedApiKey || generatingBRD) return;
+    if (!hasApiKey || generatingBRD) return;
     setGeneratingBRD(true);
     setGenerateError(null);
     try {
       await runPipeline({
         projectId: projectId as Id<"projects">,
         provider: resolvedProvider,
-        apiKey: resolvedApiKey,
       });
       setActiveTab("brd");
     } catch (e: any) {
-      setGenerateError(e.message || "Pipeline failed — check your API key in Settings");
+      setGenerateError(e.message || "Pipeline failed — contact admin to check API key settings");
     } finally {
       setGeneratingBRD(false);
     }
@@ -658,7 +656,7 @@ export function ProjectWorkspace() {
                     </h3>
                     {!connectedIntegrations.length && (
                       <button
-                        onClick={() => navigate("/integrations")}
+                        onClick={() => navigate(`/projects/${projectId}/integrations`)}
                         className="text-[11px] text-primary hover:underline flex items-center gap-1"
                       >
                         Connect integrations <ArrowRight className="w-3 h-3" />

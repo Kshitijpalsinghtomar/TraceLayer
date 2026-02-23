@@ -118,6 +118,36 @@ export const listBySource = query({
   },
 });
 
+// ─── Batch Update Requirement Status ─────────────────────────────────────────
+export const batchUpdateStatus = mutation({
+  args: {
+    ids: v.array(v.id("requirements")),
+    status: v.union(
+      v.literal("discovered"),
+      v.literal("pending"),
+      v.literal("under_review"),
+      v.literal("confirmed"),
+      v.literal("rejected"),
+      v.literal("deferred")
+    ),
+  },
+  handler: async (ctx, args) => {
+    let updated = 0;
+    for (const id of args.ids) {
+      const req = await ctx.db.get(id);
+      if (req) {
+        await ctx.db.patch(id, {
+          status: args.status,
+          lastModified: Date.now(),
+          modifiedBy: "user" as const,
+        });
+        updated++;
+      }
+    }
+    return { updated };
+  },
+});
+
 // ─── List all requirements (for global search) ──────────────────────────────
 export const list = query({
   handler: async (ctx) => {

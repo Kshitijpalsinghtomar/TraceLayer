@@ -25,6 +25,12 @@ export const upload = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    // Server-side content length validation (500KB max)
+    const MAX_CONTENT_LENGTH = 500 * 1024;
+    if (args.content.length > MAX_CONTENT_LENGTH) {
+      throw new Error(`Content too large (${(args.content.length / 1024).toFixed(0)}KB). Maximum allowed is 500KB.`);
+    }
+
     const wordCount = args.content.split(/\s+/).length;
 
     const sourceId = await ctx.db.insert("sources", {

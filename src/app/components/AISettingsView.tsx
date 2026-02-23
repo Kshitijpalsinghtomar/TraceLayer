@@ -2,7 +2,7 @@
  * AISettingsView — Convex-connected API key management and AI provider configuration
  */
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { motion } from "motion/react";
 import { useAdmin } from "../hooks/useAdmin";
@@ -19,6 +19,8 @@ import {
   Sparkles,
   Zap,
   Lock,
+  FlaskConical,
+  AlertCircle,
 } from "lucide-react";
 
 const PROVIDERS = [
@@ -60,10 +62,14 @@ export function AISettingsView() {
   const activeKeys = useQuery(api.apiKeys.getActiveKeys);
   const storeKey = useMutation(api.apiKeys.storeKey);
   const deleteKey = useMutation(api.apiKeys.deleteKey);
+  const testKeyAction = useAction(api.apiKeys.testKey);
 
   const [newKeys, setNewKeys] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [testing, setTesting] = useState<Record<string, boolean>>({});
+  const [testResults, setTestResults] = useState<Record<string, { valid: boolean; error?: string }>>({});
+  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   if (!isAdmin) {
     return (
@@ -82,17 +88,35 @@ export function AISettingsView() {
       </div>
     );
   }
+
   const handleSaveKey = async (provider: "openai" | "gemini" | "anthropic") => {
     const key = newKeys[provider]?.trim();
     if (!key) return;
     setSaving((p) => ({ ...p, [provider]: true }));
+    setSaveErrors((p) => ({ ...p, [provider]: "" }));
     try {
       await storeKey({ provider, key });
       setNewKeys((p) => ({ ...p, [provider]: "" }));
-    } catch (err) {
-      console.error("Failed to save key:", err);
+      setTestResults((p) => ({ ...p, [provider]: undefined as any }));
+    } catch (err: any) {
+      setSaveErrors((p) => ({ ...p, [provider]: err.message || "Failed to save key" }));
     } finally {
       setSaving((p) => ({ ...p, [provider]: false }));
+    }
+  };
+
+  const handleTestKey = async (provider: "openai" | "gemini" | "anthropic") => {
+    const key = newKeys[provider]?.trim();
+    if (!key) return;
+    setTesting((p) => ({ ...p, [provider]: true }));
+    setTestResults((p) => ({ ...p, [provider]: undefined as any }));
+    try {
+      const result = await testKeyAction({ provider, key });
+      setTestResults((p) => ({ ...p, [provider]: result }));
+    } catch (err: any) {
+      setTestResults((p) => ({ ...p, [provider]: { valid: false, error: err.message } }));
+    } finally {
+      setTesting((p) => ({ ...p, [provider]: false }));
     }
   };
 
@@ -151,6 +175,8 @@ export function AISettingsView() {
         {PROVIDERS.map((provider, i) => {
           const activeKey = getActiveKeyForProvider(provider.id);
           const Icon = provider.icon;
+          const testResult = testResults[provider.id];
+          const saveError = saveErrors[provider.id];
 
           return (
             <motion.div
@@ -181,7 +207,7 @@ export function AISettingsView() {
                 {activeKey && (
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    <span className="text-[12px] text-emerald-600">Connected</span>
+                    <span className="text-[12px] text-emerald-600 font-medium">Active</span>
                   </div>
                 )}
               </div>
@@ -209,14 +235,16 @@ export function AISettingsView() {
               )}
 
               {/* Input for new key */}
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <div className="flex-1 relative">
                   <input
                     type={showKeys[provider.id] ? "text" : "password"}
                     value={newKeys[provider.id] || ""}
-                    onChange={(e) =>
-                      setNewKeys((p) => ({ ...p, [provider.id]: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setNewKeys((p) => ({ ...p, [provider.id]: e.target.value }));
+                      setSaveErrors((p) => ({ ...p, [provider.id]: "" }));
+                      setTestResults((p) => ({ ...p, [provider.id]: undefined as any }));
+                    }}
                     placeholder={activeKey ? "Replace key..." : provider.placeholder}
                     className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-[14px] font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/30 focus:ring-2 focus:ring-primary/8 transition-all pr-10"
                   />
@@ -237,6 +265,21 @@ export function AISettingsView() {
                   </button>
                 </div>
                 <button
+                  onClick={() => handleTestKey(provider.id)}
+                  disabled={!newKeys[provider.id]?.trim() || testing[provider.id]}
+                  className="px-4 py-2.5 bg-muted text-foreground rounded-xl text-[13px] hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0 flex items-center gap-1.5"
+                  title="Test this key against the provider API"
+                >
+                  {testing[provider.id] ? (
+                    <div className="w-4 h-4 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <FlaskConical className="w-3.5 h-3.5" />
+                      Test
+                    </>
+                  )}
+                </button>
+                <button
                   onClick={() => handleSaveKey(provider.id)}
                   disabled={!newKeys[provider.id]?.trim() || saving[provider.id]}
                   className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-[13px] hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
@@ -248,6 +291,29 @@ export function AISettingsView() {
                   )}
                 </button>
               </div>
+
+              {/* Test result / error feedback */}
+              {testResult && (
+                <div className={`mt-3 flex items-center gap-2 text-[12px] ${testResult.valid ? "text-emerald-600" : "text-red-500"}`}>
+                  {testResult.valid ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Key is valid — API connection successful</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>{testResult.error || "Key validation failed"}</span>
+                    </>
+                  )}
+                </div>
+              )}
+              {saveError && (
+                <div className="mt-3 flex items-center gap-2 text-[12px] text-red-500">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>{saveError}</span>
+                </div>
+              )}
 
               {/* Docs link */}
               <p className="mt-3 text-[12px] text-muted-foreground">
@@ -281,10 +347,14 @@ export function AISettingsView() {
           </div>
           <div className="flex items-start gap-3">
             <span className="w-6 h-6 rounded-full bg-primary/8 flex items-center justify-center shrink-0 mt-0.5 text-[11px] text-primary">2</span>
-            <p>When running the extraction pipeline, select which provider to use.</p>
+            <p>Use the <strong>Test</strong> button to verify your key connects successfully.</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="w-6 h-6 rounded-full bg-primary/8 flex items-center justify-center shrink-0 mt-0.5 text-[11px] text-primary">3</span>
+            <p>When running the extraction pipeline, select which provider to use.</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="w-6 h-6 rounded-full bg-primary/8 flex items-center justify-center shrink-0 mt-0.5 text-[11px] text-primary">4</span>
             <p>TraceLayer's multi-agent system uses your key to extract requirements, identify stakeholders, detect conflicts, and generate your BRD.</p>
           </div>
         </div>

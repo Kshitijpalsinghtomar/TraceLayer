@@ -22,6 +22,8 @@ export default defineSchema({
     ),
     color: v.string(),
     progress: v.number(),
+    /** Creator / owner user — used for project-level access scoping */
+    userId: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
     // Aggregated stats (denormalized for speed)
@@ -30,7 +32,7 @@ export default defineSchema({
     stakeholderCount: v.number(),
     decisionCount: v.number(),
     conflictCount: v.number(),
-  }),
+  }).index("by_user", ["userId"]),
 
   // ─── Sources (uploaded files / ingested data) ────────────────────────────
   sources: defineTable({
@@ -238,6 +240,8 @@ export default defineSchema({
     type: v.union(v.literal("brd"), v.literal("prd"), v.literal("traceability_matrix")),
     version: v.number(),
     content: v.string(), // JSON string of structured document
+    /** Parent document in the lineage chain (e.g. BRD → PRD → SRS) */
+    parentDocumentId: v.optional(v.id("documents")),
     generatedAt: v.number(),
     generatedFrom: v.object({
       requirementCount: v.number(),
@@ -251,7 +255,8 @@ export default defineSchema({
       v.literal("outdated")
     ),
   }).index("by_project", ["projectId"])
-    .index("by_type", ["projectId", "type"]),
+    .index("by_type", ["projectId", "type"])
+    .index("by_parent", ["parentDocumentId"]),
 
   // ─── Extraction Runs (pipeline execution tracking) ────────────────────────
   extractionRuns: defineTable({
@@ -419,4 +424,157 @@ export default defineSchema({
     lastAccessedAt: v.optional(v.number()),
   }).index("by_token", ["token"])
     .index("by_project", ["projectId"]),
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STARTUP PHASE: Auth, Multi-tenancy, Document Chain
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ─── Users (auth provider-synced user accounts) ─────────────────────────────
+  users: defineTable({
+    /** External auth provider ID (Logto sub, Clerk ID, etc.) — vendor-agnostic */
+    authProviderId: v.string(),
+    email: v.string(),
+    name: v.string(),
+    avatarUrl: v.optional(v.string()),
+    /** Which org this user belongs to */
+    organizationId: v.optional(v.id("organizations")),
+    /** Global role */
+    role: v.union(
+      v.literal("admin"),
+      v.literal("member"),
+      v.literal("viewer")
+    ),
+    /** Onboarding status */
+    onboardingCompleted: v.boolean(),
+    createdAt: v.number(),
+    lastLoginAt: v.optional(v.number()),
+  }).index("by_auth_provider_id", ["authProviderId"])
+    .index("by_email", ["email"])
+    .index("by_org", ["organizationId"]),
+
+  // ─── Organizations (multi-tenancy) ─────────────────────────────────────────
+  organizations: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    /** Billing plan */
+    plan: v.union(
+      v.literal("free"),
+      v.literal("pro"),
+      v.literal("team"),
+      v.literal("enterprise")
+    ),
+    /** Owner user */
+    ownerId: v.optional(v.id("users")),
+    memberCount: v.number(),
+    /** Usage tracking */
+    documentsGenerated: v.number(),
+    aiTokensUsed: v.number(),
+    storageUsedBytes: v.number(),
+    /** Billing period */
+    billingPeriodStart: v.optional(v.number()),
+    billingPeriodEnd: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_slug", ["slug"]),
+
+  // ─── Document Types (the domino chain definition) ──────────────────────────
+  documentTypes: defineTable({
+    /** Short key: "brd", "prd", "frd", "srs", "trd", "test_plan", "uat", "rtm" */
+    key: v.string(),
+    /** Display name: "Business Requirements Document" */
+    displayName: v.string(),
+    /** Short label: "BRD" */
+    shortLabel: v.string(),
+    /** Position in the document chain (1 = first) */
+    order: v.number(),
+    /** Description of this document type */
+    description: v.string(),
+    /** Which document type must be completed before this one can be generated */
+    requiredPredecessorKey: v.optional(v.string()),
+    /** Which app integration categories are relevant for this doc type */
+    integrationCategories: v.array(v.string()),
+    /** JSON schema describing the sections of this document type */
+    templateSections: v.array(v.object({
+      key: v.string(),
+      title: v.string(),
+      description: v.string(),
+      required: v.boolean(),
+    })),
+    /** Icon name from lucide */
+    icon: v.string(),
+    /** Theme color for UI */
+    color: v.string(),
+  }).index("by_key", ["key"])
+    .index("by_order", ["order"]),
+
+  // ─── Document Chain Links (connections between generated docs) ──────────────
+  documentChainLinks: defineTable({
+    projectId: v.id("projects"),
+    /** The parent document that was used to generate this one */
+    fromDocumentId: v.id("documents"),
+    /** The child document generated from the parent */
+    toDocumentId: v.id("documents"),
+    /** Type of relationship */
+    relationship: v.union(
+      v.literal("generated_from"),
+      v.literal("references"),
+      v.literal("validates"),
+      v.literal("traces_to")
+    ),
+    /** How many data points were inherited from parent → child */
+    inheritedDataPoints: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_project", ["projectId"])
+    .index("by_from", ["fromDocumentId"])
+    .index("by_to", ["toDocumentId"]),
+
+  // ─── Project Members (project-level RBAC) ──────────────────────────────────
+  projectMembers: defineTable({
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+    role: v.union(
+      v.literal("owner"),
+      v.literal("editor"),
+      v.literal("viewer")
+    ),
+    addedAt: v.number(),
+    addedBy: v.optional(v.id("users")),
+  }).index("by_project", ["projectId"])
+    .index("by_user", ["userId"])
+    .index("by_project_user", ["projectId", "userId"]),
+
+  // ─── Audit Log (enterprise audit trail) ────────────────────────────────────
+  auditLog: defineTable({
+    organizationId: v.optional(v.id("organizations")),
+    userId: v.optional(v.id("users")),
+    /** What happened */
+    action: v.string(),
+    /** What type of resource was affected */
+    resourceType: v.union(
+      v.literal("project"),
+      v.literal("document"),
+      v.literal("integration"),
+      v.literal("user"),
+      v.literal("organization"),
+      v.literal("settings")
+    ),
+    /** ID of the affected resource */
+    resourceId: v.optional(v.string()),
+    /** Extra context as JSON string */
+    metadata: v.optional(v.string()),
+    timestamp: v.number(),
+  }).index("by_org", ["organizationId"])
+    .index("by_user", ["userId"])
+    .index("by_timestamp", ["timestamp"]),
+
+  // ─── Chat Context Settings (cross-project AI Chat access toggles) ────────────
+  chatContextSettings: defineTable({
+    /** The base project the AI Chat is opened in */
+    projectId: v.id("projects"),
+    /** The user who configured this */
+    userId: v.id("users"),
+    /** Additional projects the AI Chat is allowed to access */
+    allowedProjectIds: v.array(v.id("projects")),
+    updatedAt: v.number(),
+  }).index("by_project_user", ["projectId", "userId"]),
 });
